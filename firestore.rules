@@ -1,0 +1,1414 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Application: Easy Queue Business (Multi-Counter Queue Management)
+//
+// Collection: /users/{userId}
+// Document ID: Firebase Auth UID (1..128)
+// Fields:
+//   - id: string (required, 1..128) - matches userId, immutable
+//   - name: string (required, 1..100) - user full name
+//   - email: string (optional, valid email <= 254) - contact email
+//   - phoneNumber: string (optional, 1..30) - contact phone
+//   - role: string (required, ['CUSTOMER', 'STAFF', 'BUSINESS_OWNER']) - user primary role
+//   - avatarUrl: string (optional, valid URL <= 1000) - profile picture URL
+//   - defaultBusinessId: string (optional, 1..128) - default business ID
+//   - defaultBranchId: string (optional, 1..128) - default branch ID
+//   - createdAt: timestamp (required, immutable) - document creation timestamp
+//   - updatedAt: timestamp (required) - last modification timestamp
+//
+// Collection: /businesses/{businessId}
+// Document ID: Auto-generated or business slug (1..128)
+// Fields:
+//   - id: string (required, 1..128) - matches businessId, immutable
+//   - ownerId: string (required, 1..128) - UID of business owner, immutable
+//   - name: string (required, 1..150) - business name
+//   - category: string (required, 1..100) - business category/industry
+//   - description: string (optional, 0..1000) - business overview
+//   - logoUrl: string (optional, valid URL <= 1000) - logo image URL
+//   - email: string (optional, valid email <= 254) - official contact email
+//   - phoneNumber: string (optional, 1..30) - official contact phone
+//   - contactNumber: string (optional, 0..30) - alternative contact phone
+//   - country: string (optional, 0..10) - country code (e.g. "IN")
+//   - timeZone: string (optional, 0..60) - business timezone
+//   - isPublic: bool (required) - whether business is discoverable publicly
+//   - status: string (required, ['ACTIVE', 'INACTIVE', 'SUSPENDED']) - tenant operational status
+//   - settings: map (optional, <= 20 keys) - business configurations
+//   - createdAt: timestamp (required, immutable) - creation timestamp
+//   - updatedAt: timestamp (required) - last updated timestamp
+//
+// Subcollection: /businesses/{businessId}/members/{memberId}
+// Document ID: Member UID or invitation ID (1..128)
+// Fields:
+//   - id: string (required, 1..128) - matches memberId, immutable
+//   - businessId: string (required, 1..128) - matches businessId, immutable
+//   - userId: string (required, 1..128) - Auth UID of staff member, immutable
+//   - role: string (required, ['OWNER', 'BRANCH_MANAGER', 'MANAGER', 'SUPERVISOR', 'COUNTER_OPERATOR', 'OPERATOR', 'RECEPTIONIST'])
+//   - assignedBranchIds: list of strings (required, <= 50 items) - branches member has access to
+//   - assignedCounterIds: list of strings (optional, <= 50 items) - counters assigned
+//   - displayName: string (required, 1..100) - display name
+//   - email: string (required, valid email <= 254) - staff email address
+//   - phoneNumber: string (optional, 1..30) - contact phone
+//   - status: string (required, ['ACTIVE', 'INVITED', 'SUSPENDED']) - membership state
+//   - createdAt: timestamp (required, immutable) - member added timestamp
+//   - updatedAt: timestamp (required) - last updated timestamp
+//
+// Subcollection: /businesses/{businessId}/employees/{employeeId}
+// Document ID: Employee record ID (1..128)
+// Fields:
+//   - id: string (optional, 1..128) - employee ID if stored, matches employeeId
+//   - businessId: string (required, 1..128) - matches businessId, immutable
+//   - branchIds: list of strings (required, <= 50 items) - assigned branch IDs
+//   - name: string (required, 1..100) - staff full name
+//   - email: string (required, valid email <= 254) - employee email address
+//   - phoneNumber: string (optional, 0..30) - contact mobile number
+//   - role: string (required, ['OWNER', 'BRANCH_MANAGER', 'SUPERVISOR', 'COUNTER_OPERATOR', 'RECEPTIONIST', 'MANAGER', 'OPERATOR'])
+//   - assignedCounterId: string (optional, 0..128) - active counter assignment
+//   - isActive: bool (required) - staff active toggle
+//   - joinedAt: timestamp (required, immutable) - joining timestamp
+//   - updatedAt: timestamp (optional) - last update timestamp
+//
+// Subcollection: /businesses/{businessId}/branches/{branchId}
+// Document ID: Branch ID (1..128)
+// Fields:
+//   - id: string (required, 1..128) - matches branchId, immutable
+//   - businessId: string (required, 1..128) - matches businessId, immutable
+//   - name: string (required, 1..120) - branch facility name
+//   - code: string (optional, 0..20) - branch code (e.g. 'BLR01')
+//   - address: string (required, 0..300) - physical address
+//   - phoneNumber: string (optional, 0..30) - branch desk phone
+//   - contactNumber: string (optional, 0..30) - contact phone
+//   - status: string (required, ['ACTIVE', 'INACTIVE', 'CLOSED']) - branch state
+//   - timezone: string (optional, 0..60) - IANA timezone
+//   - timeZone: string (optional, 0..60) - alternate timezone field
+//   - operatingHours: map (optional, <= 15 keys) - schedule per day
+//   - geo: map (optional, <= 5 keys) - latitude and longitude coordinates
+//   - createdAt: timestamp (required, immutable) - creation timestamp
+//   - updatedAt: timestamp (required) - last updated timestamp
+//
+// Subcollection: /businesses/{businessId}/branches/{branchId}/services/{serviceId}
+// Document ID: Service ID (1..128)
+// Fields:
+//   - id: string (required, 1..128) - matches serviceId, immutable
+//   - branchId: string (required, 1..128) - matches branchId, immutable
+//   - businessId: string (required, 1..128) - matches businessId, immutable
+//   - name: string (required, 1..100) - service title (e.g. "General Consultation")
+//   - code: string (required, 1..15) - service prefix/code (e.g. "A", "CS")
+//   - description: string (optional, 0..500) - service instructions
+//   - estimatedDurationMinutes: number (required, 1..480) - avg processing duration
+//   - averageServiceMinutes: number (optional, 1..480) - average service duration
+//   - isActive: bool (optional) - whether service accepts tickets
+//   - status: string (optional, ['ACTIVE', 'INACTIVE', 'ARCHIVED']) - service status
+//   - priority: number (optional, 1..100) - default queue priority weight
+//   - supportsPriority: bool (optional) - whether priority ticketing enabled
+//   - priorityWeightMultiplier: number (optional, 0.1..10.0) - priority multiplier
+//   - maxDailyCapacity: number (optional, 0..10000) - daily ticket cap
+//   - maxQueueCapacity: number (optional, 0..10000) - max tickets in queue
+//   - allowWalkIn: bool (optional) - walk-in token flag
+//   - allowOnlineJoin: bool (optional) - online queue booking flag
+//   - allocationPolicy: string (optional, 0..30) - ticket dispatch policy ('FIFO', etc.)
+//   - createdAt: timestamp (required, immutable) - creation timestamp
+//   - updatedAt: timestamp (required) - last updated timestamp
+//
+// Subcollection: /businesses/{businessId}/branches/{branchId}/counters/{counterId}
+// Document ID: Counter ID (1..128)
+// Fields:
+//   - id: string (required, 1..128) - matches counterId, immutable
+//   - branchId: string (required, 1..128) - matches branchId, immutable
+//   - businessId: string (required, 1..128) - matches businessId, immutable
+//   - counterNumber: string or number (required) - counter display identifier
+//   - name: string (required, 1..80) - counter desk name (e.g. "Counter 1 - Doctor Desk")
+//   - displayLabel: string (optional, 0..80) - signage screen label
+//   - supportedServiceIds: list of strings (required, <= 50 items) - services served at counter
+//   - assignedOperatorIds: list of strings (required, <= 20 items) - staff authorized to operate
+//   - status: string (required, ['OPEN', 'CALLING', 'SERVING', 'PAUSED', 'CLOSED', 'AVAILABLE', 'BUSY', 'BREAK', 'OFFLINE', 'MAINTENANCE'])
+//   - currentEntryId: string (optional, 0..128) - active token queue entry ID
+//   - currentTokenNumber: string (optional, 0..30) - active token string (e.g. "A-102")
+//   - currentOperatorName: string (optional, 0..100) - name of operator currently on shift
+//   - maxSimultaneousCapacity: number (optional, 1..10) - concurrent patrons allowed
+//   - autoAllocationEnabled: bool (optional) - auto FIFO dispatch
+//   - allocationPriority: number (optional, 1..100) - operator priority weight
+//   - lastHeartbeat: timestamp (optional) - operator activity ping
+//   - lastHeartbeatAt: timestamp (optional) - operator activity ping
+//   - serviceStartedAt: timestamp (optional) - when current customer service started
+//   - createdAt: timestamp (optional, immutable) - creation timestamp
+//   - updatedAt: timestamp (required) - last updated timestamp
+//
+// Subcollection: /businesses/{businessId}/branches/{branchId}/queues/{queueId}
+// Document ID: Queue ID (1..128, typically 1:1 or 1:N per service)
+// Fields:
+//   - id: string (required, 1..128) - matches queueId, immutable
+//   - branchId: string (required, 1..128) - matches branchId, immutable
+//   - businessId: string (required, 1..128) - matches businessId, immutable
+//   - serviceId: string (required, 1..128) - linked service ID, immutable
+//   - name: string (optional, 0..100) - logical queue name
+//   - tokenPrefix: string (optional, 0..15) - token letter prefix (e.g. 'A')
+//   - tokenSequenceDate: string (optional, 0..30) - sequence tracking date
+//   - lastTokenNumber: number (optional, 0..100000) - last issued number
+//   - waitingCount: number (optional, 0..50000) - waiting patrons count
+//   - calledCount: number (optional, 0..50000) - called patrons count
+//   - servingCount: number (optional, 0..50000) - currently serving count
+//   - completedCount: number (optional, 0..50000) - completed count
+//   - currentLength: number (optional, 0..50000) - active waiting customer count
+//   - estimatedWaitMinutes: number (optional, 0..1440) - calculated wait time
+//   - isPaused: bool (optional) - pause new queue intake
+//   - status: string (required, ['ACTIVE', 'PAUSED', 'CLOSED', 'OPEN']) - queue state
+//   - lastServedToken: string (optional, 0..30) - token most recently served
+//   - createdAt: timestamp (optional, immutable) - creation timestamp
+//   - updatedAt: timestamp (required) - last updated timestamp
+//
+// Nested Subcollection: /businesses/{businessId}/branches/{branchId}/operations/{operationId}
+// AND Root Collection: /operations/{operationId}
+// Document ID: Operation log ID (1..128)
+// Fields:
+//   - id: string (optional, 1..128) - matches operationId, immutable
+//   - branchId: string (required, 1..128) - branch ID, immutable
+//   - businessId: string (required, 1..128) - business ID, immutable
+//   - counterId: string (optional, 0..128) - counter where event occurred
+//   - counterName: string (optional, 0..80) - counter display label
+//   - operatorId: string (optional, 0..128) - UID of operator performing action, immutable
+//   - operatorName: string (optional, 0..100) - operator name
+//   - entryId: string (optional, 0..128) - ticket entry affected
+//   - serviceId: string (optional, 0..128) - service affected
+//   - tokenNumber: string (optional, 0..30) - token string (e.g. 'A-102')
+//   - action: string (required, 1..50) - action type ('CALL', 'SERVE', 'COMPLETE', 'START_SERVICE', etc.)
+//   - previousState: string (optional, 0..30) - entry previous state
+//   - newState: string (optional, 0..30) - entry new state
+//   - details: string or map (optional, <= 1000 chars string or <= 20 keys map) - metadata
+//   - timestamp: timestamp (required, immutable) - exact time action was taken
+//
+// Collection: /queueEntries/{entryId}
+// Document ID: Ticket ID (1..128)
+// Fields:
+//   - id: string (required, 1..128) - matches entryId, immutable
+//   - businessId: string (required, 1..128) - business ID, immutable
+//   - branchId: string (required, 1..128) - branch ID, immutable
+//   - serviceId: string (required, 1..128) - service requested, immutable
+//   - tokenNumber: string (required, 1..30) - displayed token number (e.g. "A042"), immutable
+//   - status: string (required, ['WAITING', 'PENDING', 'CALLED', 'SERVING', 'COMPLETED', 'CANCELLED', 'NO_SHOW', 'TRANSFERRED', 'SKIPPED'])
+//   - assignedCounterId: string (optional, 0..128) - serving counter ID
+//   - counterName: string (optional, 0..80) - serving counter display name
+//   - assignedOperatorId: string (optional, 0..128) - serving operator UID
+//   - operatorName: string (optional, 0..100) - operator name
+//   - customer: map (required, immutable keys: id, name)
+//       * id: string (optional, 0..128) - customer Auth UID or anonymous UID
+//       * name: string (required, 1..100) - customer name
+//       * phone / phoneNumber: string (optional, 0..30) - SMS alert phone
+//       * email: string (optional, valid email <= 254)
+//       * notes: string (optional, 0..500)
+//       * numberOfPeople: number (optional, 1..100) - party size
+//   - joinedAt: timestamp (required, immutable) - time token was generated
+//   - calledAt: timestamp (optional) - time token was called
+//   - servedAt: timestamp (optional) - time operator began serving
+//   - serviceStartedAt: timestamp (optional) - time operator started serving
+//   - completedAt: timestamp (optional) - time service finished
+//   - cancelledAt: timestamp (optional) - time cancelled
+//   - cancellationReason: string (optional, 0..200) - reason for cancellation
+//   - transferredToServiceId: string (optional, 0..128) - transfer target
+//   - notes: string (optional, 0..500) - internal operator notes
+//   - priority: number (optional, 1..100) - custom priority override
+//   - priorityCategory: string (optional, 0..30) - 'NORMAL', 'VIP', 'EMERGENCY', etc.
+//   - priorityWeight: number (optional, 1..100) - numeric queue ordering weight
+//   - recallCount: number (optional, 0..50) - number of times customer was recalled
+//   - estimatedWaitMinutes: number (optional, 0..1440)
+//   - serviceDurationSeconds: number (optional, 0..86400) - completed service duration
+//   - updatedAt: timestamp (optional) - last modification timestamp
+//
+// Collection: /appointments/{appointmentId}
+// Document ID: Appointment ID (1..128)
+// Fields:
+//   - id: string (required, 1..128) - matches appointmentId, immutable
+//   - businessId: string (required, 1..128) - target business, immutable
+//   - branchId: string (required, 1..128) - target branch, immutable
+//   - serviceId: string (required, 1..128) - booked service, immutable
+//   - serviceName: string (optional, 0..100) - service display title
+//   - customerId: string (optional, 1..128) - customer UID
+//   - customerName: string (required, 1..100) - customer full name
+//   - customerPhone / phoneNumber: string (optional, 0..30) - contact phone
+//   - customerEmail: string (optional, valid email <= 254) - confirmation email
+//   - appointmentTime / scheduledTime: timestamp (required) - scheduled datetime
+//   - status: string (required, ['SCHEDULED', 'CONFIRMED', 'CHECKED_IN', 'CANCELLED', 'COMPLETED', 'NO_SHOW'])
+//   - tokenNumber: string (optional, 0..30) - generated token upon check-in
+//   - notes: string (optional, 0..500) - customer/staff booking notes
+//   - createdAt: timestamp (required, immutable) - creation timestamp
+//   - updatedAt: timestamp (required) - last updated timestamp
+//
+// Collection: /displayDevices/{deviceId}
+// Document ID: Paired hardware display device ID (1..128)
+// Fields:
+//   - id: string (required, 1..128) - matches deviceId, immutable
+//   - businessId: string (required, 1..128) - linked business, immutable
+//   - branchId: string (required, 1..128) - linked branch, immutable
+//   - name: string (required, 1..100) - display screen name (e.g. "Main Waiting Area TV")
+//   - pairingCode: string (optional, 0..30) - temporary OTP pairing code
+//   - isPaired: bool (required) - pairing state
+//   - isActive: bool (required) - whether screen is authorized to stream data
+//   - pairedAt: timestamp (optional) - pairing completed time
+//   - pairedBy: string (optional, 0..128) - UID of manager who paired device
+//   - lastPingAt: timestamp (optional) - device heartbeat
+//   - counterIds: list of strings (optional, <= 50 items) - specific counters to display
+//   - createdAt: timestamp (required, immutable) - registration timestamp
+//   - updatedAt: timestamp (required) - last updated timestamp
+//
+// Collection: /subscriptions/{subscriptionId}
+// Document ID: Subscription identifier (1..128)
+// Fields:
+//   - id: string (required, 1..128) - matches subscriptionId
+//   - businessId: string (required, 1..128) - business ID
+//   - plan: string (required, ['FREE', 'STARTER', 'PRO', 'ENTERPRISE'])
+//   - status: string (required, ['ACTIVE', 'TRIALING', 'PAST_DUE', 'CANCELLED'])
+//   - currentPeriodStart: timestamp (required)
+//   - currentPeriodEnd: timestamp (required)
+//   - cancelAtPeriodEnd: bool (required)
+//   - createdAt: timestamp (required)
+//   - updatedAt: timestamp (required)
+//
+// Collection: /auditLogs/{auditId}
+// Document ID: Audit log identifier (1..128)
+// Fields:
+//   - id: string (required, 1..128)
+//   - businessId: string (required, 1..128)
+//   - userId: string (required, 1..128)
+//   - action: string (required, 1..100)
+//   - entityType: string (required, 1..50)
+//   - entityId: string (required, 1..128)
+//   - details: map (required, <= 30 keys)
+//   - ipAddress: string (optional, 0..60)
+//   - timestamp: timestamp (required)
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Global Default Deny
+    // ===============================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function hasRequiredFields(data, fields) {
+      return data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(data, fields) {
+      return data.keys().hasOnly(fields);
+    }
+
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    function isRecent(time) {
+      return time is timestamp &&
+        time > request.time - duration.value(5, 'm') &&
+        time <= request.time + duration.value(1, 'm');
+    }
+
+    function isValidEmail(email) {
+      return email is string &&
+        email.size() <= 254 &&
+        email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidUrl(url) {
+      return url is string &&
+        url.size() <= 1000 &&
+        (url.matches("^https://.*") || url.matches("^http://.*"));
+    }
+
+    function isValidOptionalString(data, field, minLen, maxLen) {
+      return !(field in data) ||
+        data[field] == null ||
+        (data[field] is string && data[field].size() >= minLen && data[field].size() <= maxLen);
+    }
+
+    function isValidOptionalNumber(data, field, minVal, maxVal) {
+      return !(field in data) ||
+        data[field] == null ||
+        (data[field] is number && data[field] >= minVal && data[field] <= maxVal);
+    }
+
+    function isValidOptionalTimestamp(data, field) {
+      return !(field in data) ||
+        data[field] == null ||
+        data[field] is timestamp;
+    }
+
+    function isValidOptionalEmail(data, field) {
+      return !(field in data) ||
+        data[field] == null ||
+        data[field] == '' ||
+        (data[field] is string && isValidEmail(data[field]));
+    }
+
+    function isValidOptionalUrl(data, field) {
+      return !(field in data) ||
+        data[field] == null ||
+        (data[field] is string && isValidUrl(data[field]));
+    }
+
+    function isValidOptionalMap(data, field, maxKeys) {
+      return !(field in data) ||
+        data[field] == null ||
+        (data[field] is map && data[field].keys().size() <= maxKeys);
+    }
+
+    // ===============================================================
+    // Multi-Tenancy, Membership & Staff RBAC Helpers
+    // ===============================================================
+
+    function getMemberDoc(businessId) {
+      return get(/databases/$(database)/documents/businesses/$(businessId)/members/$(request.auth.uid));
+    }
+
+    function isMember(businessId) {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/businesses/$(businessId)/members/$(request.auth.uid));
+    }
+
+    function getEmployeeDoc(businessId) {
+      return get(/databases/$(database)/documents/businesses/$(businessId)/employees/$(request.auth.uid));
+    }
+
+    function isEmployee(businessId) {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/businesses/$(businessId)/employees/$(request.auth.uid));
+    }
+
+    function isBusinessOwner(businessId) {
+      return isAuthenticated() && (
+        (
+          exists(/databases/$(database)/documents/businesses/$(businessId)) &&
+          get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerId == request.auth.uid
+        ) ||
+        (
+          existsAfter(/databases/$(database)/documents/businesses/$(businessId)) &&
+          getAfter(/databases/$(database)/documents/businesses/$(businessId)).data.ownerId == request.auth.uid
+        ) ||
+        (
+          isMember(businessId) &&
+          getMemberDoc(businessId).data.status == 'ACTIVE' &&
+          getMemberDoc(businessId).data.role == 'OWNER'
+        ) ||
+        (
+          isEmployee(businessId) &&
+          getEmployeeDoc(businessId).data.isActive == true &&
+          getEmployeeDoc(businessId).data.role == 'OWNER'
+        )
+      );
+    }
+
+    function isActiveBusinessMember(businessId) {
+      return isAuthenticated() && (
+        isBusinessOwner(businessId) ||
+        (
+          isMember(businessId) &&
+          getMemberDoc(businessId).data.status == 'ACTIVE'
+        ) ||
+        (
+          isEmployee(businessId) &&
+          getEmployeeDoc(businessId).data.isActive == true
+        )
+      );
+    }
+
+    function isBranchStaff(businessId, branchId) {
+      return isAuthenticated() && (
+        isBusinessOwner(businessId) ||
+        (
+          isMember(businessId) &&
+          getMemberDoc(businessId).data.status == 'ACTIVE' &&
+          getMemberDoc(businessId).data.assignedBranchIds is list &&
+          getMemberDoc(businessId).data.assignedBranchIds.hasAny([branchId])
+        ) ||
+        (
+          isEmployee(businessId) &&
+          getEmployeeDoc(businessId).data.isActive == true &&
+          getEmployeeDoc(businessId).data.branchIds is list &&
+          getEmployeeDoc(businessId).data.branchIds.hasAny([branchId])
+        )
+      );
+    }
+
+    function isBranchManager(businessId, branchId) {
+      return isAuthenticated() && (
+        isBusinessOwner(businessId) ||
+        (
+          isMember(businessId) &&
+          getMemberDoc(businessId).data.status == 'ACTIVE' &&
+          getMemberDoc(businessId).data.role in ['MANAGER', 'BRANCH_MANAGER'] &&
+          getMemberDoc(businessId).data.assignedBranchIds is list &&
+          getMemberDoc(businessId).data.assignedBranchIds.hasAny([branchId])
+        ) ||
+        (
+          isEmployee(businessId) &&
+          getEmployeeDoc(businessId).data.isActive == true &&
+          getEmployeeDoc(businessId).data.role in ['MANAGER', 'BRANCH_MANAGER'] &&
+          getEmployeeDoc(businessId).data.branchIds is list &&
+          getEmployeeDoc(businessId).data.branchIds.hasAny([branchId])
+        )
+      );
+    }
+
+    function isBranchManagerOrSupervisor(businessId, branchId) {
+      return isAuthenticated() && (
+        isBusinessOwner(businessId) ||
+        (
+          isMember(businessId) &&
+          getMemberDoc(businessId).data.status == 'ACTIVE' &&
+          getMemberDoc(businessId).data.role in ['MANAGER', 'BRANCH_MANAGER', 'SUPERVISOR'] &&
+          getMemberDoc(businessId).data.assignedBranchIds is list &&
+          getMemberDoc(businessId).data.assignedBranchIds.hasAny([branchId])
+        ) ||
+        (
+          isEmployee(businessId) &&
+          getEmployeeDoc(businessId).data.isActive == true &&
+          getEmployeeDoc(businessId).data.role in ['MANAGER', 'BRANCH_MANAGER', 'SUPERVISOR'] &&
+          getEmployeeDoc(businessId).data.branchIds is list &&
+          getEmployeeDoc(businessId).data.branchIds.hasAny([branchId])
+        )
+      );
+    }
+
+    function isBusinessOwnerOrManager(businessId) {
+      return isAuthenticated() && (
+        isBusinessOwner(businessId) ||
+        (
+          isMember(businessId) &&
+          getMemberDoc(businessId).data.status == 'ACTIVE' &&
+          getMemberDoc(businessId).data.role in ['OWNER', 'MANAGER', 'BRANCH_MANAGER']
+        ) ||
+        (
+          isEmployee(businessId) &&
+          getEmployeeDoc(businessId).data.isActive == true &&
+          getEmployeeDoc(businessId).data.role in ['OWNER', 'MANAGER', 'BRANCH_MANAGER']
+        )
+      );
+    }
+
+    function isBranchManagerForBranches(businessId, branchIdsList) {
+      return isAuthenticated() && (
+        isBusinessOwner(businessId) ||
+        (
+          isMember(businessId) &&
+          getMemberDoc(businessId).data.status == 'ACTIVE' &&
+          getMemberDoc(businessId).data.role in ['MANAGER', 'BRANCH_MANAGER'] &&
+          branchIdsList is list &&
+          (branchIdsList.size() == 0 || getMemberDoc(businessId).data.assignedBranchIds.hasAll(branchIdsList))
+        ) ||
+        (
+          isEmployee(businessId) &&
+          getEmployeeDoc(businessId).data.isActive == true &&
+          getEmployeeDoc(businessId).data.role in ['MANAGER', 'BRANCH_MANAGER'] &&
+          branchIdsList is list &&
+          (branchIdsList.size() == 0 || getEmployeeDoc(businessId).data.branchIds.hasAll(branchIdsList))
+        )
+      );
+    }
+
+    function isPairedDisplayDevice(businessId, branchId) {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/displayDevices/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/displayDevices/$(request.auth.uid)).data.businessId == businessId &&
+        get(/databases/$(database)/documents/displayDevices/$(request.auth.uid)).data.branchId == branchId &&
+        get(/databases/$(database)/documents/displayDevices/$(request.auth.uid)).data.isActive == true;
+    }
+
+    // ===============================================================
+    // Domain Validators (Used in both create and update)
+    // ===============================================================
+
+    function isValidUser(data) {
+      return hasRequiredFields(data, ['id', 'name', 'role', 'createdAt', 'updatedAt']) &&
+        hasOnlyAllowedFields(data, ['id', 'name', 'email', 'phoneNumber', 'role', 'avatarUrl', 'defaultBusinessId', 'defaultBranchId', 'createdAt', 'updatedAt']) &&
+        data.id is string && data.id.size() >= 1 && data.id.size() <= 128 &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
+        data.role in ['CUSTOMER', 'STAFF', 'BUSINESS_OWNER'] &&
+        isValidOptionalEmail(data, 'email') &&
+        isValidOptionalString(data, 'phoneNumber', 1, 30) &&
+        isValidOptionalUrl(data, 'avatarUrl') &&
+        isValidOptionalString(data, 'defaultBusinessId', 1, 128) &&
+        isValidOptionalString(data, 'defaultBranchId', 1, 128) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidBusiness(data) {
+      return hasRequiredFields(data, ['id', 'ownerId', 'name', 'category', 'isPublic', 'status', 'createdAt', 'updatedAt']) &&
+        hasOnlyAllowedFields(data, [
+          'id', 'ownerId', 'name', 'category', 'description', 'logoUrl',
+          'email', 'phoneNumber', 'contactNumber', 'country', 'timeZone',
+          'isPublic', 'status', 'settings', 'createdAt', 'updatedAt'
+        ]) &&
+        data.id is string && data.id.size() >= 1 && data.id.size() <= 128 &&
+        data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 150 &&
+        data.category is string && data.category.size() >= 1 && data.category.size() <= 100 &&
+        isValidOptionalString(data, 'description', 0, 1000) &&
+        isValidOptionalUrl(data, 'logoUrl') &&
+        isValidOptionalEmail(data, 'email') &&
+        isValidOptionalString(data, 'phoneNumber', 0, 30) &&
+        isValidOptionalString(data, 'contactNumber', 0, 30) &&
+        isValidOptionalString(data, 'country', 0, 10) &&
+        isValidOptionalString(data, 'timeZone', 0, 60) &&
+        data.isPublic is bool &&
+        data.status in ['ACTIVE', 'INACTIVE', 'SUSPENDED'] &&
+        isValidOptionalMap(data, 'settings', 20) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidMember(data) {
+      return hasRequiredFields(data, [
+        'id', 'businessId', 'userId', 'role', 'assignedBranchIds',
+        'displayName', 'email', 'status', 'createdAt', 'updatedAt'
+      ]) &&
+      hasOnlyAllowedFields(data, [
+        'id', 'businessId', 'userId', 'role', 'assignedBranchIds',
+        'assignedCounterIds', 'displayName', 'email', 'phoneNumber',
+        'status', 'createdAt', 'updatedAt'
+      ]) &&
+      data.id is string && data.id.size() >= 1 && data.id.size() <= 128 &&
+      data.businessId is string && data.businessId.size() >= 1 && data.businessId.size() <= 128 &&
+      data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+      data.role in ['OWNER', 'BRANCH_MANAGER', 'MANAGER', 'SUPERVISOR', 'COUNTER_OPERATOR', 'OPERATOR', 'RECEPTIONIST'] &&
+      data.assignedBranchIds is list && data.assignedBranchIds.size() <= 50 &&
+      (!('assignedCounterIds' in data) || (data.assignedCounterIds is list && data.assignedCounterIds.size() <= 50)) &&
+      data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100 &&
+      isValidEmail(data.email) &&
+      isValidOptionalString(data, 'phoneNumber', 0, 30) &&
+      data.status in ['ACTIVE', 'INVITED', 'SUSPENDED'] &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidEmployee(data) {
+      return hasRequiredFields(data, ['businessId', 'branchIds', 'name', 'email', 'role', 'isActive', 'joinedAt']) &&
+        hasOnlyAllowedFields(data, [
+          'id', 'businessId', 'branchIds', 'name', 'email',
+          'phoneNumber', 'role', 'assignedCounterId', 'isActive', 'joinedAt', 'updatedAt'
+        ]) &&
+        isValidOptionalString(data, 'id', 1, 128) &&
+        data.businessId is string && data.businessId.size() >= 1 && data.businessId.size() <= 128 &&
+        data.branchIds is list && data.branchIds.size() <= 50 &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
+        isValidEmail(data.email) &&
+        isValidOptionalString(data, 'phoneNumber', 0, 30) &&
+        data.role in ['OWNER', 'BRANCH_MANAGER', 'SUPERVISOR', 'COUNTER_OPERATOR', 'RECEPTIONIST', 'MANAGER', 'OPERATOR'] &&
+        isValidOptionalString(data, 'assignedCounterId', 0, 128) &&
+        data.isActive is bool &&
+        data.joinedAt is timestamp &&
+        isValidOptionalTimestamp(data, 'updatedAt');
+    }
+
+    function isValidBranch(data) {
+      return hasRequiredFields(data, ['id', 'businessId', 'name', 'address', 'status', 'createdAt', 'updatedAt']) &&
+        hasOnlyAllowedFields(data, [
+          'id', 'businessId', 'name', 'code', 'address', 'phoneNumber', 'contactNumber',
+          'status', 'timezone', 'timeZone', 'operatingHours', 'geo', 'createdAt', 'updatedAt'
+        ]) &&
+        data.id is string && data.id.size() >= 1 && data.id.size() <= 128 &&
+        data.businessId is string && data.businessId.size() >= 1 && data.businessId.size() <= 128 &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 120 &&
+        isValidOptionalString(data, 'code', 0, 20) &&
+        data.address is string && data.address.size() >= 0 && data.address.size() <= 300 &&
+        isValidOptionalString(data, 'phoneNumber', 0, 30) &&
+        isValidOptionalString(data, 'contactNumber', 0, 30) &&
+        data.status in ['ACTIVE', 'INACTIVE', 'CLOSED'] &&
+        isValidOptionalString(data, 'timezone', 0, 60) &&
+        isValidOptionalString(data, 'timeZone', 0, 60) &&
+        isValidOptionalMap(data, 'operatingHours', 15) &&
+        isValidOptionalMap(data, 'geo', 5) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidService(data) {
+      return hasRequiredFields(data, [
+        'id', 'branchId', 'businessId', 'name', 'code',
+        'estimatedDurationMinutes', 'createdAt', 'updatedAt'
+      ]) &&
+      hasOnlyAllowedFields(data, [
+        'id', 'branchId', 'businessId', 'name', 'code', 'description',
+        'estimatedDurationMinutes', 'averageServiceMinutes', 'isActive', 'status',
+        'priority', 'supportsPriority', 'priorityWeightMultiplier',
+        'maxDailyCapacity', 'maxQueueCapacity', 'allowWalkIn', 'allowOnlineJoin',
+        'allocationPolicy', 'createdAt', 'updatedAt'
+      ]) &&
+      data.id is string && data.id.size() >= 1 && data.id.size() <= 128 &&
+      data.branchId is string && data.branchId.size() >= 1 && data.branchId.size() <= 128 &&
+      data.businessId is string && data.businessId.size() >= 1 && data.businessId.size() <= 128 &&
+      data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
+      data.code is string && data.code.size() >= 1 && data.code.size() <= 15 &&
+      isValidOptionalString(data, 'description', 0, 500) &&
+      data.estimatedDurationMinutes is number && data.estimatedDurationMinutes >= 1 && data.estimatedDurationMinutes <= 480 &&
+      isValidOptionalNumber(data, 'averageServiceMinutes', 1, 480) &&
+      (!('isActive' in data) || data.isActive is bool) &&
+      (!('status' in data) || data.status in ['ACTIVE', 'INACTIVE', 'ARCHIVED']) &&
+      isValidOptionalNumber(data, 'priority', 1, 100) &&
+      (!('supportsPriority' in data) || data.supportsPriority is bool) &&
+      (!('priorityWeightMultiplier' in data) || (data.priorityWeightMultiplier is number && data.priorityWeightMultiplier >= 0.1 && data.priorityWeightMultiplier <= 10.0)) &&
+      isValidOptionalNumber(data, 'maxDailyCapacity', 0, 10000) &&
+      isValidOptionalNumber(data, 'maxQueueCapacity', 0, 10000) &&
+      (!('allowWalkIn' in data) || data.allowWalkIn is bool) &&
+      (!('allowOnlineJoin' in data) || data.allowOnlineJoin is bool) &&
+      (!('allocationPolicy' in data) || (data.allocationPolicy is string && data.allocationPolicy.size() <= 30)) &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidCounter(data) {
+      return hasRequiredFields(data, [
+        'id', 'branchId', 'businessId', 'counterNumber', 'name',
+        'supportedServiceIds', 'assignedOperatorIds', 'status', 'updatedAt'
+      ]) &&
+      hasOnlyAllowedFields(data, [
+        'id', 'branchId', 'businessId', 'counterNumber', 'name', 'displayLabel',
+        'supportedServiceIds', 'assignedOperatorIds', 'status', 'currentEntryId',
+        'currentTokenNumber', 'currentOperatorName', 'maxSimultaneousCapacity',
+        'autoAllocationEnabled', 'allocationPriority', 'lastHeartbeat', 'lastHeartbeatAt',
+        'serviceStartedAt', 'createdAt', 'updatedAt'
+      ]) &&
+      data.id is string && data.id.size() >= 1 && data.id.size() <= 128 &&
+      data.branchId is string && data.branchId.size() >= 1 && data.branchId.size() <= 128 &&
+      data.businessId is string && data.businessId.size() >= 1 && data.businessId.size() <= 128 &&
+      (
+        (data.counterNumber is string && data.counterNumber.size() >= 1 && data.counterNumber.size() <= 20) ||
+        (data.counterNumber is number && data.counterNumber >= 1)
+      ) &&
+      data.name is string && data.name.size() >= 1 && data.name.size() <= 80 &&
+      isValidOptionalString(data, 'displayLabel', 0, 80) &&
+      data.supportedServiceIds is list && data.supportedServiceIds.size() <= 50 &&
+      data.assignedOperatorIds is list && data.assignedOperatorIds.size() <= 20 &&
+      data.status in ['OPEN', 'CALLING', 'SERVING', 'PAUSED', 'CLOSED', 'AVAILABLE', 'BUSY', 'BREAK', 'OFFLINE', 'MAINTENANCE'] &&
+      isValidOptionalString(data, 'currentEntryId', 0, 128) &&
+      isValidOptionalString(data, 'currentTokenNumber', 0, 30) &&
+      isValidOptionalString(data, 'currentOperatorName', 0, 100) &&
+      isValidOptionalNumber(data, 'maxSimultaneousCapacity', 1, 10) &&
+      (!('autoAllocationEnabled' in data) || data.autoAllocationEnabled is bool) &&
+      isValidOptionalNumber(data, 'allocationPriority', 1, 100) &&
+      isValidOptionalTimestamp(data, 'lastHeartbeat') &&
+      isValidOptionalTimestamp(data, 'lastHeartbeatAt') &&
+      isValidOptionalTimestamp(data, 'serviceStartedAt') &&
+      isValidOptionalTimestamp(data, 'createdAt') &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidQueue(data) {
+      return hasRequiredFields(data, [
+        'id', 'branchId', 'businessId', 'serviceId', 'status', 'updatedAt'
+      ]) &&
+      hasOnlyAllowedFields(data, [
+        'id', 'branchId', 'businessId', 'serviceId', 'name', 'tokenPrefix',
+        'tokenSequenceDate', 'lastTokenNumber', 'waitingCount', 'calledCount',
+        'servingCount', 'completedCount', 'currentLength', 'estimatedWaitMinutes',
+        'isPaused', 'status', 'lastServedToken', 'createdAt', 'updatedAt'
+      ]) &&
+      data.id is string && data.id.size() >= 1 && data.id.size() <= 128 &&
+      data.branchId is string && data.branchId.size() >= 1 && data.branchId.size() <= 128 &&
+      data.businessId is string && data.businessId.size() >= 1 && data.businessId.size() <= 128 &&
+      data.serviceId is string && data.serviceId.size() >= 1 && data.serviceId.size() <= 128 &&
+      isValidOptionalString(data, 'name', 0, 100) &&
+      isValidOptionalString(data, 'tokenPrefix', 0, 15) &&
+      isValidOptionalString(data, 'tokenSequenceDate', 0, 30) &&
+      isValidOptionalNumber(data, 'lastTokenNumber', 0, 100000) &&
+      isValidOptionalNumber(data, 'waitingCount', 0, 50000) &&
+      isValidOptionalNumber(data, 'calledCount', 0, 50000) &&
+      isValidOptionalNumber(data, 'servingCount', 0, 50000) &&
+      isValidOptionalNumber(data, 'completedCount', 0, 50000) &&
+      isValidOptionalNumber(data, 'currentLength', 0, 50000) &&
+      isValidOptionalNumber(data, 'estimatedWaitMinutes', 0, 1440) &&
+      (!('isPaused' in data) || data.isPaused is bool) &&
+      data.status in ['ACTIVE', 'PAUSED', 'CLOSED', 'OPEN'] &&
+      isValidOptionalString(data, 'lastServedToken', 0, 30) &&
+      isValidOptionalTimestamp(data, 'createdAt') &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidOperationDetails(data) {
+      return !('details' in data) ||
+        (data.details is string && data.details.size() <= 1000) ||
+        (data.details is map && data.details.keys().size() <= 20);
+    }
+
+    function isValidOperationLog(data) {
+      return hasRequiredFields(data, ['branchId', 'businessId', 'action', 'timestamp']) &&
+        hasOnlyAllowedFields(data, [
+          'id', 'branchId', 'businessId', 'counterId', 'counterName', 'operatorId',
+          'operatorName', 'entryId', 'serviceId', 'tokenNumber', 'action',
+          'previousState', 'newState', 'details', 'timestamp'
+        ]) &&
+        isValidOptionalString(data, 'id', 1, 128) &&
+        data.branchId is string && data.branchId.size() >= 1 && data.branchId.size() <= 128 &&
+        data.businessId is string && data.businessId.size() >= 1 && data.businessId.size() <= 128 &&
+        isValidOptionalString(data, 'counterId', 0, 128) &&
+        isValidOptionalString(data, 'counterName', 0, 80) &&
+        isValidOptionalString(data, 'operatorId', 0, 128) &&
+        isValidOptionalString(data, 'operatorName', 0, 100) &&
+        isValidOptionalString(data, 'entryId', 0, 128) &&
+        isValidOptionalString(data, 'serviceId', 0, 128) &&
+        isValidOptionalString(data, 'tokenNumber', 0, 30) &&
+        data.action is string && data.action.size() >= 1 && data.action.size() <= 50 &&
+        isValidOptionalString(data, 'previousState', 0, 30) &&
+        isValidOptionalString(data, 'newState', 0, 30) &&
+        isValidOperationDetails(data) &&
+        data.timestamp is timestamp;
+    }
+
+    function isValidCustomerMap(customer) {
+      return customer is map &&
+        customer.keys().hasAll(['name']) &&
+        customer.keys().hasOnly(['id', 'name', 'phone', 'phoneNumber', 'email', 'notes', 'numberOfPeople']) &&
+        isValidOptionalString(customer, 'id', 0, 128) &&
+        customer.name is string && customer.name.size() >= 1 && customer.name.size() <= 100 &&
+        isValidOptionalString(customer, 'phone', 0, 30) &&
+        isValidOptionalString(customer, 'phoneNumber', 0, 30) &&
+        isValidOptionalEmail(customer, 'email') &&
+        isValidOptionalString(customer, 'notes', 0, 500) &&
+        isValidOptionalNumber(customer, 'numberOfPeople', 1, 100);
+    }
+
+    function isValidQueueStatusTransition(currentStatus, nextStatus) {
+      return (currentStatus == nextStatus) ||
+        (currentStatus in ['WAITING', 'PENDING'] && nextStatus in ['CALLED', 'CANCELLED', 'NO_SHOW', 'SKIPPED']) ||
+        (currentStatus in ['CALLED', 'SERVING'] && nextStatus in ['COMPLETED', 'SERVING', 'NO_SHOW', 'SKIPPED', 'TRANSFERRED', 'CANCELLED', 'WAITING', 'PAUSED']) ||
+        (currentStatus in ['TRANSFERRED', 'SKIPPED', 'PAUSED'] && nextStatus in ['WAITING', 'CALLED', 'CANCELLED']);
+    }
+
+    function isValidQueueEntry(data) {
+      return hasRequiredFields(data, [
+        'id', 'businessId', 'branchId', 'serviceId', 'tokenNumber',
+        'status', 'customer', 'joinedAt'
+      ]) &&
+      hasOnlyAllowedFields(data, [
+        'id', 'businessId', 'branchId', 'serviceId', 'tokenNumber', 'status',
+        'assignedCounterId', 'counterName', 'assignedOperatorId', 'operatorName',
+        'customer', 'joinedAt', 'calledAt', 'servedAt', 'serviceStartedAt',
+        'completedAt', 'cancelledAt', 'cancellationReason', 'transferredToServiceId',
+        'notes', 'priority', 'priorityCategory', 'priorityWeight', 'recallCount',
+        'estimatedWaitMinutes', 'serviceDurationSeconds', 'updatedAt'
+      ]) &&
+      data.id is string && data.id.size() >= 1 && data.id.size() <= 128 &&
+      data.businessId is string && data.businessId.size() >= 1 && data.businessId.size() <= 128 &&
+      data.branchId is string && data.branchId.size() >= 1 && data.branchId.size() <= 128 &&
+      data.serviceId is string && data.serviceId.size() >= 1 && data.serviceId.size() <= 128 &&
+      data.tokenNumber is string && data.tokenNumber.size() >= 1 && data.tokenNumber.size() <= 30 &&
+      data.status in ['WAITING', 'PENDING', 'CALLED', 'SERVING', 'COMPLETED', 'CANCELLED', 'NO_SHOW', 'TRANSFERRED', 'SKIPPED'] &&
+      isValidOptionalString(data, 'assignedCounterId', 0, 128) &&
+      isValidOptionalString(data, 'counterName', 0, 80) &&
+      isValidOptionalString(data, 'assignedOperatorId', 0, 128) &&
+      isValidOptionalString(data, 'operatorName', 0, 100) &&
+      isValidCustomerMap(data.customer) &&
+      data.joinedAt is timestamp &&
+      isValidOptionalTimestamp(data, 'calledAt') &&
+      isValidOptionalTimestamp(data, 'servedAt') &&
+      isValidOptionalTimestamp(data, 'serviceStartedAt') &&
+      isValidOptionalTimestamp(data, 'completedAt') &&
+      isValidOptionalTimestamp(data, 'cancelledAt') &&
+      isValidOptionalString(data, 'cancellationReason', 0, 200) &&
+      isValidOptionalString(data, 'transferredToServiceId', 0, 128) &&
+      isValidOptionalString(data, 'notes', 0, 500) &&
+      isValidOptionalNumber(data, 'priority', 1, 100) &&
+      isValidOptionalString(data, 'priorityCategory', 0, 30) &&
+      isValidOptionalNumber(data, 'priorityWeight', 1, 100) &&
+      isValidOptionalNumber(data, 'recallCount', 0, 50) &&
+      isValidOptionalNumber(data, 'estimatedWaitMinutes', 0, 1440) &&
+      isValidOptionalNumber(data, 'serviceDurationSeconds', 0, 86400) &&
+      isValidOptionalTimestamp(data, 'updatedAt');
+    }
+
+    function isValidAppointment(data) {
+      return hasRequiredFields(data, [
+        'id', 'businessId', 'branchId', 'serviceId',
+        'customerName', 'status', 'createdAt', 'updatedAt'
+      ]) &&
+      hasOnlyAllowedFields(data, [
+        'id', 'businessId', 'branchId', 'serviceId', 'serviceName',
+        'customerId', 'customerName', 'customerPhone', 'phoneNumber',
+        'customerEmail', 'appointmentTime', 'scheduledTime', 'status',
+        'tokenNumber', 'notes', 'createdAt', 'updatedAt'
+      ]) &&
+      data.id is string && data.id.size() >= 1 && data.id.size() <= 128 &&
+      data.businessId is string && data.businessId.size() >= 1 && data.businessId.size() <= 128 &&
+      data.branchId is string && data.branchId.size() >= 1 && data.branchId.size() <= 128 &&
+      data.serviceId is string && data.serviceId.size() >= 1 && data.serviceId.size() <= 128 &&
+      isValidOptionalString(data, 'serviceName', 0, 100) &&
+      isValidOptionalString(data, 'customerId', 1, 128) &&
+      data.customerName is string && data.customerName.size() >= 1 && data.customerName.size() <= 100 &&
+      isValidOptionalString(data, 'customerPhone', 0, 30) &&
+      isValidOptionalString(data, 'phoneNumber', 0, 30) &&
+      isValidOptionalEmail(data, 'customerEmail') &&
+      (
+        (('appointmentTime' in data) && data.appointmentTime is timestamp) ||
+        (('scheduledTime' in data) && data.scheduledTime is timestamp)
+      ) &&
+      data.status in ['SCHEDULED', 'CONFIRMED', 'CHECKED_IN', 'CANCELLED', 'COMPLETED', 'NO_SHOW'] &&
+      isValidOptionalString(data, 'tokenNumber', 0, 30) &&
+      isValidOptionalString(data, 'notes', 0, 500) &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidDisplayDevice(data) {
+      return hasRequiredFields(data, ['id', 'businessId', 'branchId', 'name', 'isPaired', 'isActive', 'createdAt', 'updatedAt']) &&
+        hasOnlyAllowedFields(data, [
+          'id', 'businessId', 'branchId', 'name', 'pairingCode', 'isPaired',
+          'isActive', 'pairedAt', 'pairedBy', 'lastPingAt', 'counterIds', 'createdAt', 'updatedAt'
+        ]) &&
+        data.id is string && data.id.size() >= 1 && data.id.size() <= 128 &&
+        data.businessId is string && data.businessId.size() >= 1 && data.businessId.size() <= 128 &&
+        data.branchId is string && data.branchId.size() >= 1 && data.branchId.size() <= 128 &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
+        isValidOptionalString(data, 'pairingCode', 0, 30) &&
+        data.isPaired is bool &&
+        data.isActive is bool &&
+        isValidOptionalTimestamp(data, 'pairedAt') &&
+        isValidOptionalString(data, 'pairedBy', 0, 128) &&
+        isValidOptionalTimestamp(data, 'lastPingAt') &&
+        (!('counterIds' in data) || (data.counterIds is list && data.counterIds.size() <= 50)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    // ===============================================================
+    // Root Users Collection (/users/{userId})
+    // ===============================================================
+    match /users/{userId} {
+      // PII Protection: Only the authenticated user themselves can read their profile
+      allow read: if isOwner(userId);
+
+      allow create: if isOwner(userId) &&
+        isValidUser(request.resource.data) &&
+        request.resource.data.id == userId &&
+        (request.resource.data.createdAt == request.time || isRecent(request.resource.data.createdAt));
+
+      allow update: if isOwner(userId) &&
+        isValidUser(request.resource.data) &&
+        areImmutableFieldsUnchanged(['id', 'createdAt']);
+
+      allow delete: if isOwner(userId);
+    }
+
+    // ===============================================================
+    // Businesses & Subcollections (/businesses/{businessId})
+    // ===============================================================
+    match /businesses/{businessId} {
+      // Single-document read: Owner, public active business, or verified active member/employee
+      allow get: if (isAuthenticated() && resource.data.ownerId == request.auth.uid) ||
+        (resource.data.isPublic == true && resource.data.status == 'ACTIVE') ||
+        isActiveBusinessMember(businessId);
+
+      // Collection queries: Must cleanly rely directly on resource.data fields without subcollection lookups
+      allow list: if (isAuthenticated() && (('ownerId' in resource.data) && resource.data.ownerId == request.auth.uid)) ||
+        (('isPublic' in resource.data) && resource.data.isPublic == true && ('status' in resource.data) && resource.data.status == 'ACTIVE');
+
+      // Create allowed for authenticated user setting themselves as the initial owner
+      allow create: if isAuthenticated() &&
+        isValidBusiness(request.resource.data) &&
+        request.resource.data.id == businessId &&
+        request.resource.data.ownerId == request.auth.uid &&
+        (request.resource.data.createdAt == request.time || isRecent(request.resource.data.createdAt));
+
+      // Update allowed only by the Business Owner
+      allow update: if isBusinessOwner(businessId) &&
+        isValidBusiness(request.resource.data) &&
+        areImmutableFieldsUnchanged(['id', 'ownerId', 'createdAt']);
+
+      // Delete allowed only by Business Owner
+      allow delete: if isBusinessOwner(businessId);
+
+      // -------------------------------------------------------------
+      // Subcollection: Members (/businesses/{businessId}/members/{memberId})
+      // -------------------------------------------------------------
+      match /members/{memberId} {
+        // Read allowed for any member or employee of the business
+        allow read: if isActiveBusinessMember(businessId);
+
+        allow create: if isAuthenticated() &&
+          isValidMember(request.resource.data) &&
+          request.resource.data.id == memberId &&
+          request.resource.data.businessId == businessId &&
+          (request.resource.data.createdAt == request.time || isRecent(request.resource.data.createdAt)) &&
+          (
+            // 1. Initial Owner bootstrap when creating a business
+            (
+              request.auth.uid == memberId &&
+              request.resource.data.userId == request.auth.uid &&
+              request.resource.data.role == 'OWNER' &&
+              request.resource.data.status == 'ACTIVE' &&
+              (
+                (exists(/databases/$(database)/documents/businesses/$(businessId)) &&
+                 get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerId == request.auth.uid) ||
+                (existsAfter(/databases/$(database)/documents/businesses/$(businessId)) &&
+                 getAfter(/databases/$(database)/documents/businesses/$(businessId)).data.ownerId == request.auth.uid)
+              )
+            ) ||
+            // 2. Business Owner adding any member
+            isBusinessOwner(businessId) ||
+            // 3. Branch Manager adding OPERATOR or RECEPTIONIST for their assigned branches
+            (
+              request.resource.data.role in ['OPERATOR', 'COUNTER_OPERATOR', 'RECEPTIONIST'] &&
+              isBranchManagerForBranches(businessId, request.resource.data.assignedBranchIds)
+            )
+          );
+
+        allow update: if isAuthenticated() &&
+          isValidMember(request.resource.data) &&
+          areImmutableFieldsUnchanged(['id', 'businessId', 'userId', 'createdAt']) &&
+          (
+            // 1. Business Owner updating any member
+            isBusinessOwner(businessId) ||
+            // 2. Branch Manager updating operators or receptionists under their branches
+            (
+              resource.data.role in ['OPERATOR', 'COUNTER_OPERATOR', 'RECEPTIONIST'] &&
+              request.resource.data.role in ['OPERATOR', 'COUNTER_OPERATOR', 'RECEPTIONIST'] &&
+              isBranchManagerForBranches(businessId, resource.data.assignedBranchIds) &&
+              isBranchManagerForBranches(businessId, request.resource.data.assignedBranchIds)
+            ) ||
+            // 3. Member updating their own profile (display name, phone only)
+            (
+              request.auth.uid == resource.data.userId &&
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'phoneNumber', 'updatedAt']) &&
+              areImmutableFieldsUnchanged(['role', 'assignedBranchIds', 'assignedCounterIds', 'email', 'status'])
+            )
+          );
+
+        allow delete: if isBusinessOwner(businessId) ||
+          (
+            resource.data.role in ['OPERATOR', 'COUNTER_OPERATOR', 'RECEPTIONIST'] &&
+            isBranchManagerForBranches(businessId, resource.data.assignedBranchIds)
+          );
+      }
+
+      // -------------------------------------------------------------
+      // Subcollection: Employees (/businesses/{businessId}/employees/{employeeId})
+      // -------------------------------------------------------------
+      match /employees/{employeeId} {
+        // Read: Any active member, active employee, or owner of the business
+        allow read: if isActiveBusinessMember(businessId);
+
+        // Create: Business owners and branch managers
+        // Note: Branch managers cannot grant the OWNER role (RBAC anti-escalation)
+        allow create: if isAuthenticated() &&
+          isValidEmployee(request.resource.data) &&
+          request.resource.data.businessId == businessId &&
+          (!('id' in request.resource.data) || request.resource.data.id == employeeId) &&
+          (request.resource.data.joinedAt == request.time || isRecent(request.resource.data.joinedAt)) &&
+          (
+            // 1. Business Owner can add any employee (including OWNER)
+            isBusinessOwner(businessId) ||
+            // 2. Branch Manager can add employees for branches they manage, cannot grant OWNER role
+            (
+              isBusinessOwnerOrManager(businessId) &&
+              request.resource.data.role != 'OWNER' &&
+              isBranchManagerForBranches(businessId, request.resource.data.branchIds)
+            )
+          );
+
+        // Update: Business owners and branch managers (e.g., toggling isActive or editing staff info)
+        // Immutable: businessId, joinedAt (and document id if present)
+        // Branch managers cannot modify or escalate OWNER accounts
+        allow update: if isAuthenticated() &&
+          isValidEmployee(request.resource.data) &&
+          areImmutableFieldsUnchanged(['businessId', 'joinedAt']) &&
+          (!('id' in resource.data) || areImmutableFieldsUnchanged(['id'])) &&
+          (
+            // 1. Business Owner can update any employee
+            isBusinessOwner(businessId) ||
+            // 2. Branch Manager can update non-owner employees under their branches
+            (
+              isBusinessOwnerOrManager(businessId) &&
+              resource.data.role != 'OWNER' &&
+              request.resource.data.role != 'OWNER' &&
+              isBranchManagerForBranches(businessId, resource.data.branchIds) &&
+              isBranchManagerForBranches(businessId, request.resource.data.branchIds)
+            )
+          );
+
+        // Delete: Business Owner can delete any employee; Branch Manager non-owner employees
+        allow delete: if isAuthenticated() &&
+          (
+            isBusinessOwner(businessId) ||
+            (
+              isBusinessOwnerOrManager(businessId) &&
+              resource.data.role != 'OWNER' &&
+              isBranchManagerForBranches(businessId, resource.data.branchIds)
+            )
+          );
+      }
+
+      // -------------------------------------------------------------
+      // Subcollection: Branches (/businesses/{businessId}/branches/{branchId})
+      // -------------------------------------------------------------
+      match /branches/{branchId} {
+        // Read: Members of the business or public if branch is active
+        allow read: if isActiveBusinessMember(businessId) || resource.data.status == 'ACTIVE';
+
+        // Create: Business Owner or Manager can create new branches
+        allow create: if isBusinessOwnerOrManager(businessId) &&
+          isValidBranch(request.resource.data) &&
+          request.resource.data.id == branchId &&
+          request.resource.data.businessId == businessId &&
+          (request.resource.data.createdAt == request.time || isRecent(request.resource.data.createdAt));
+
+        // Update: Business Owner or Branch Manager assigned to that branch
+        allow update: if (isBusinessOwnerOrManager(businessId) || isBranchManager(businessId, branchId)) &&
+          isValidBranch(request.resource.data) &&
+          areImmutableFieldsUnchanged(['id', 'businessId', 'createdAt']);
+
+        // Delete: Only Business Owner
+        allow delete: if isBusinessOwner(businessId);
+
+        // ...........................................................
+        // Subcollection: Services (/services/{serviceId})
+        // ...........................................................
+        match /services/{serviceId} {
+          // Read: Public / Customers if active, and all business members
+          allow read: if isActiveBusinessMember(businessId) ||
+            resource.data.status == 'ACTIVE' ||
+            (('isActive' in resource.data) && resource.data.isActive == true);
+
+          // Write: Business Owner or Branch Manager
+          allow create: if (isBusinessOwnerOrManager(businessId) || isBranchManager(businessId, branchId)) &&
+            isValidService(request.resource.data) &&
+            request.resource.data.id == serviceId &&
+            request.resource.data.businessId == businessId &&
+            request.resource.data.branchId == branchId &&
+            (request.resource.data.createdAt == request.time || isRecent(request.resource.data.createdAt));
+
+          allow update: if (isBusinessOwnerOrManager(businessId) || isBranchManager(businessId, branchId)) &&
+            isValidService(request.resource.data) &&
+            areImmutableFieldsUnchanged(['id', 'businessId', 'branchId', 'createdAt']);
+
+          allow delete: if (isBusinessOwnerOrManager(businessId) || isBranchManager(businessId, branchId));
+        }
+
+        // ...........................................................
+        // Subcollection: Counters (/counters/{counterId})
+        // ...........................................................
+        match /counters/{counterId} {
+          // Read: Branch staff, paired display devices, or public/customers viewing active counters
+          allow read: if isBranchStaff(businessId, branchId) ||
+            isPairedDisplayDevice(businessId, branchId) ||
+            resource.data.status in ['OPEN', 'CALLING', 'SERVING', 'PAUSED', 'AVAILABLE', 'BUSY'];
+
+          // Create: Business Owner or Branch Manager
+          allow create: if (isBusinessOwnerOrManager(businessId) || isBranchManager(businessId, branchId)) &&
+            isValidCounter(request.resource.data) &&
+            request.resource.data.id == counterId &&
+            request.resource.data.businessId == businessId &&
+            request.resource.data.branchId == branchId &&
+            (
+              !('createdAt' in request.resource.data) ||
+              request.resource.data.createdAt == request.time ||
+              isRecent(request.resource.data.createdAt)
+            );
+
+          // Update:
+          // - Config change (name, services, operator assignments): Owner or Branch Manager
+          // - Operational status change (available, busy, pause, heartbeat, handover): Assigned operator or Branch Manager
+          allow update: if isValidCounter(request.resource.data) &&
+            areImmutableFieldsUnchanged(['id', 'businessId', 'branchId']) &&
+            (!('createdAt' in resource.data) || areImmutableFieldsUnchanged(['createdAt'])) &&
+            (
+              // Schema / Configuration update by Manager or Owner
+              (isBusinessOwnerOrManager(businessId) || isBranchManager(businessId, branchId)) ||
+              // Operational status update by assigned operator or branch staff
+              (
+                isAuthenticated() &&
+                (
+                  (resource.data.assignedOperatorIds is list && resource.data.assignedOperatorIds.hasAny([request.auth.uid])) ||
+                  isBranchStaff(businessId, branchId)
+                ) &&
+                request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                  'status', 'currentEntryId', 'currentTokenNumber', 'currentOperatorName',
+                  'serviceStartedAt', 'lastHeartbeat', 'lastHeartbeatAt', 'updatedAt'
+                ]) &&
+                areImmutableFieldsUnchanged(['counterNumber', 'name', 'supportedServiceIds', 'assignedOperatorIds'])
+              )
+            );
+
+          // Delete: Business Owner or Branch Manager
+          allow delete: if (isBusinessOwnerOrManager(businessId) || isBranchManager(businessId, branchId));
+        }
+
+        // ...........................................................
+        // Subcollection: Logical Queues (/queues/{queueId})
+        // ...........................................................
+        match /queues/{queueId} {
+          // Read: Members and Public (queue length, current status)
+          allow read: if isActiveBusinessMember(businessId) || resource.data.status in ['ACTIVE', 'PAUSED', 'OPEN'];
+
+          // Create: Business Owner or Branch Manager initializing queue
+          allow create: if (isBusinessOwnerOrManager(businessId) || isBranchManager(businessId, branchId)) &&
+            isValidQueue(request.resource.data) &&
+            request.resource.data.id == queueId &&
+            request.resource.data.businessId == businessId &&
+            request.resource.data.branchId == branchId &&
+            (
+              !('createdAt' in request.resource.data) ||
+              request.resource.data.createdAt == request.time ||
+              isRecent(request.resource.data.createdAt)
+            );
+
+          // Update: Manager can update queue settings and operational status
+          allow update: if (isBusinessOwnerOrManager(businessId) || isBranchManager(businessId, branchId)) &&
+            isValidQueue(request.resource.data) &&
+            areImmutableFieldsUnchanged(['id', 'businessId', 'branchId', 'serviceId']) &&
+            (!('createdAt' in resource.data) || areImmutableFieldsUnchanged(['createdAt']));
+
+          // Delete: Only Business Owner
+          allow delete: if isBusinessOwner(businessId);
+        }
+
+        // ...........................................................
+        // Subcollection: Operations Audit Log (/operations/{operationId})
+        // ...........................................................
+        match /operations/{operationId} {
+          // Read: Branch staff, supervisors, managers, owners
+          allow read: if isBranchStaff(businessId, branchId);
+
+          // Create: Authenticated operator or staff member logging an operation
+          allow create: if isAuthenticated() &&
+            isBranchStaff(businessId, branchId) &&
+            isValidOperationLog(request.resource.data) &&
+            request.resource.data.businessId == businessId &&
+            request.resource.data.branchId == branchId &&
+            (!('id' in request.resource.data) || request.resource.data.id == operationId) &&
+            (!('operatorId' in request.resource.data) || request.resource.data.operatorId == request.auth.uid || isBusinessOwner(businessId)) &&
+            (request.resource.data.timestamp == request.time || isRecent(request.resource.data.timestamp));
+
+          // Immutable audit trail: Updates and deletes strictly prohibited
+          allow update: if false;
+          allow delete: if false;
+        }
+      }
+    }
+
+    // ===============================================================
+    // Root Operational Audit Logs (/operations/{operationId})
+    // ===============================================================
+    match /operations/{operationId} {
+      // Single-document read: Authorized branch staff (operators, supervisors, managers, owners)
+      allow get: if isAuthenticated() &&
+        isBranchStaff(resource.data.businessId, resource.data.branchId);
+
+      // Collection queries: Staff querying operational audit log filtered by branchId
+      allow list: if isAuthenticated() &&
+        (resource.data.branchId is string);
+
+      // Create: Authenticated branch staff member logging an operational event
+      allow create: if isAuthenticated() &&
+        isValidOperationLog(request.resource.data) &&
+        isBranchStaff(request.resource.data.businessId, request.resource.data.branchId) &&
+        (!('id' in request.resource.data) || request.resource.data.id == operationId) &&
+        (!('operatorId' in request.resource.data) || request.resource.data.operatorId == request.auth.uid || isBusinessOwner(request.resource.data.businessId)) &&
+        (request.resource.data.timestamp == request.time || isRecent(request.resource.data.timestamp));
+
+      // Immutable audit trail: Updates and deletes strictly prohibited
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // ===============================================================
+    // Root Queue Entries (/queueEntries/{entryId})
+    // ===============================================================
+    match /queueEntries/{entryId} {
+      // Single-document read: Customer owner, authorized branch staff, or paired display device
+      allow get: if isAuthenticated() && (
+        (('id' in resource.data.customer) && resource.data.customer.id == request.auth.uid) ||
+        isBranchStaff(resource.data.businessId, resource.data.branchId) ||
+        isPairedDisplayDevice(resource.data.businessId, resource.data.branchId)
+      );
+
+      // Collection queries: Customer querying own queue entries or staff querying by branchId
+      allow list: if isAuthenticated() && (
+        (('id' in resource.data.customer) && resource.data.customer.id == request.auth.uid) ||
+        (resource.data.branchId is string)
+      );
+
+      // Create:
+      // - Customer (authenticated or anonymous) joining queue
+      // - Staff creating walk-in token
+      allow create: if isAuthenticated() &&
+        isValidQueueEntry(request.resource.data) &&
+        request.resource.data.id == entryId &&
+        (request.resource.data.joinedAt == request.time || isRecent(request.resource.data.joinedAt)) &&
+        request.resource.data.status in ['WAITING', 'PENDING'] &&
+        (
+          request.resource.data.customer.id == request.auth.uid ||
+          isBranchStaff(request.resource.data.businessId, request.resource.data.branchId)
+        );
+
+      // Update:
+      // - Customer can cancel their own entry while in WAITING
+      // - Staff / assigned operator can update status, assign counter, boost priority, or update notes
+      allow update: if isAuthenticated() &&
+        isValidQueueEntry(request.resource.data) &&
+        areImmutableFieldsUnchanged(['id', 'businessId', 'branchId', 'serviceId', 'tokenNumber', 'joinedAt']) &&
+        (
+          // 1. Customer cancellation of their own ticket
+          (
+            (('id' in resource.data.customer) && request.auth.uid == resource.data.customer.id) &&
+            resource.data.status in ['WAITING', 'PENDING'] &&
+            request.resource.data.status == 'CANCELLED' &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'status', 'cancelledAt', 'cancellationReason', 'completedAt', 'updatedAt'
+            ])
+          ) ||
+          // 2. Authorized branch staff member updating ticket lifecycle, assigning counter, boosting priority, or notes
+          (
+            isBranchStaff(resource.data.businessId, resource.data.branchId) &&
+            request.resource.data.customer.name == resource.data.customer.name &&
+            (!('id' in resource.data.customer) || request.resource.data.customer.id == resource.data.customer.id) &&
+            isValidQueueStatusTransition(resource.data.status, request.resource.data.status) &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'status', 'assignedCounterId', 'counterName', 'assignedOperatorId', 'operatorName',
+              'calledAt', 'servedAt', 'serviceStartedAt', 'completedAt', 'cancelledAt',
+              'cancellationReason', 'transferredToServiceId', 'notes', 'priority', 'priorityCategory',
+              'priorityWeight', 'recallCount', 'estimatedWaitMinutes', 'serviceDurationSeconds', 'customer', 'updatedAt'
+            ])
+          )
+        );
+
+      // Delete: Disallowed
+      allow delete: if false;
+    }
+
+    // ===============================================================
+    // Appointments (/appointments/{appointmentId})
+    // ===============================================================
+    match /appointments/{appointmentId} {
+      // Single-document read: Customer owner or branch staff
+      allow get: if isAuthenticated() && (
+        (('customerId' in resource.data) && resource.data.customerId == request.auth.uid) ||
+        isBranchStaff(resource.data.businessId, resource.data.branchId)
+      );
+
+      // Collection queries: Customer querying own appointments or staff querying by branchId
+      allow list: if isAuthenticated() && (
+        (('customerId' in resource.data) && resource.data.customerId == request.auth.uid) ||
+        (resource.data.branchId is string)
+      );
+
+      // Create: Customer or receptionist / staff
+      allow create: if isAuthenticated() &&
+        isValidAppointment(request.resource.data) &&
+        request.resource.data.id == appointmentId &&
+        (request.resource.data.createdAt == request.time || isRecent(request.resource.data.createdAt)) &&
+        (
+          (('customerId' in request.resource.data) && request.resource.data.customerId == request.auth.uid && request.resource.data.status == 'SCHEDULED') ||
+          isBranchStaff(request.resource.data.businessId, request.resource.data.branchId)
+        );
+
+      // Update:
+      // - Customer: cancel or reschedule
+      // - Staff: status update (check-in, complete, reschedule)
+      allow update: if isAuthenticated() &&
+        isValidAppointment(request.resource.data) &&
+        areImmutableFieldsUnchanged(['id', 'businessId', 'branchId', 'createdAt']) &&
+        (!('customerId' in resource.data) || areImmutableFieldsUnchanged(['customerId'])) &&
+        (
+          (
+            (('customerId' in resource.data) && resource.data.customerId == request.auth.uid) &&
+            resource.data.status in ['SCHEDULED', 'CONFIRMED'] &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'appointmentTime', 'scheduledTime', 'notes', 'updatedAt']) &&
+            request.resource.data.status in ['SCHEDULED', 'CANCELLED']
+          ) ||
+          isBranchStaff(resource.data.businessId, resource.data.branchId)
+        );
+
+      // Delete: Disallowed (use status 'CANCELLED')
+      allow delete: if false;
+    }
+
+    // ===============================================================
+    // Display Devices (/displayDevices/{deviceId})
+    // ===============================================================
+    match /displayDevices/{deviceId} {
+      // Single-document read: Device itself (authenticated device UID) or Branch Manager
+      allow get: if isAuthenticated() && (
+        request.auth.uid == deviceId ||
+        isBranchManager(resource.data.businessId, resource.data.branchId)
+      );
+
+      // Collection queries: Device or manager querying devices
+      allow list: if isAuthenticated() && (
+        request.auth.uid == deviceId ||
+        (resource.data.branchId is string)
+      );
+
+      // Create: Business Owner or Branch Manager
+      allow create: if isAuthenticated() &&
+        isValidDisplayDevice(request.resource.data) &&
+        request.resource.data.id == deviceId &&
+        (request.resource.data.createdAt == request.time || isRecent(request.resource.data.createdAt)) &&
+        isBranchManager(request.resource.data.businessId, request.resource.data.branchId);
+
+      // Update:
+      // - Manager / Owner: configuration and pairing
+      // - Device itself: heartbeat / lastPingAt only
+      allow update: if isAuthenticated() &&
+        isValidDisplayDevice(request.resource.data) &&
+        (
+          (
+            isBranchManager(resource.data.businessId, resource.data.branchId) &&
+            areImmutableFieldsUnchanged(['id', 'businessId', 'branchId', 'createdAt'])
+          ) ||
+          (
+            request.auth.uid == deviceId &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastPingAt', 'updatedAt']) &&
+            areImmutableFieldsUnchanged(['id', 'businessId', 'branchId', 'name', 'isPaired', 'isActive', 'createdAt'])
+          )
+        );
+
+      // Delete: Business Owner or Branch Manager
+      allow delete: if isBranchManager(resource.data.businessId, resource.data.branchId);
+    }
+
+    // ===============================================================
+    // Subscriptions (/subscriptions/{subscriptionId})
+    // ===============================================================
+    match /subscriptions/{subscriptionId} {
+      // Single-document read: Business Owner only
+      allow get: if isAuthenticated() && isBusinessOwner(resource.data.businessId);
+
+      // Collection queries: Business Owner querying subscriptions by businessId
+      allow list: if isAuthenticated() && (resource.data.businessId is string);
+
+      // Write: Disallowed (Managed strictly by payment webhooks / backend functions)
+      allow write: if false;
+    }
+
+    // ===============================================================
+    // Audit Logs (/auditLogs/{auditId})
+    // ===============================================================
+    match /auditLogs/{auditId} {
+      // Single-document read: Business Owner only
+      allow get: if isAuthenticated() && isBusinessOwner(resource.data.businessId);
+
+      // Collection queries: Business Owner querying audit logs by businessId
+      allow list: if isAuthenticated() && (resource.data.businessId is string);
+
+      // Write: Disallowed for clients (Backend / Cloud Functions authoritative)
+      allow write: if false;
+    }
+
+  }
+}

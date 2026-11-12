@@ -1,0 +1,147 @@
+rules_version = '2';
+
+// Cloud Storage Security Rules for Easy Queue Business Application
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        ('admin' in request.auth.token && request.auth.token.admin == true) ||
+        ('role' in request.auth.token && request.auth.token.role == 'admin')
+      );
+    }
+
+    function isBusinessStaff(businessId) {
+      return isAuthenticated() && (
+        isAdmin() ||
+        (('businessId' in request.auth.token && request.auth.token.businessId == businessId) &&
+         ('role' in request.auth.token && request.auth.token.role in ['admin', 'manager', 'owner', 'staff'])) ||
+        (firestore.exists(/databases/(default)/documents/businesses/$(businessId)/members/$(request.auth.uid))) ||
+        (firestore.exists(/databases/(default)/documents/businesses/$(businessId)) &&
+         firestore.get(/databases/(default)/documents/businesses/$(businessId)).data.ownerId == request.auth.uid)
+      );
+    }
+
+    function isImage() {
+      return request.resource.contentType.matches('image/.*');
+    }
+
+    function isPdf() {
+      return request.resource.contentType == 'application/pdf';
+    }
+
+    function isUnderSizeLimit(maxMegabytes) {
+      return request.resource.size <= maxMegabytes * 1024 * 1024;
+    }
+
+    // Default deny for all paths
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    // ===============================================================
+    // Staff & User Avatars
+    // Path: users/{userId}/avatar/{fileName}
+    // ===============================================================
+    match /users/{userId}/avatar/{fileName} {
+      // Authenticated users (business staff, customers) can view profile pictures
+      allow read: if isAuthenticated();
+
+      // Only the profile owner can upload or update their avatar (max 5MB, images only)
+      allow write: if isOwner(userId) &&
+                      isImage() &&
+                      isUnderSizeLimit(5);
+
+      // Profile owner or administrator can delete avatar
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    // ===============================================================
+    // Business Branding (Logos & Media)
+    // Path: businesses/{businessId}/media/{fileName}
+    //       businesses/{businessId}/logo/{fileName}
+    // ===============================================================
+    match /businesses/{businessId}/media/{fileName} {
+      // Public read for customer discovery, queue displays, and portals
+      allow read: if true;
+
+      // Only authorized business staff or administrator can upload (max 10MB, images only)
+      allow write: if isBusinessStaff(businessId) &&
+                      isImage() &&
+                      isUnderSizeLimit(10);
+
+      allow delete: if isBusinessStaff(businessId);
+    }
+
+    match /businesses/{businessId}/logo/{fileName} {
+      // Public read for customer discovery, queue displays, and receipts
+      allow read: if true;
+
+      // Only authorized business staff or administrator can upload (max 5MB, images only)
+      allow write: if isBusinessStaff(businessId) &&
+                      isImage() &&
+                      isUnderSizeLimit(5);
+
+      allow delete: if isBusinessStaff(businessId);
+    }
+
+    // ===============================================================
+    // Branch Photos & Physical Location Assets
+    // Path: businesses/{businessId}/branches/{branchId}/{fileName}
+    // ===============================================================
+    match /businesses/{businessId}/branches/{branchId}/{fileName} {
+      // Public read for branch directory and navigation
+      allow read: if true;
+
+      // Staff of the business can upload branch media (max 10MB, images only)
+      allow write: if isBusinessStaff(businessId) &&
+                      isImage() &&
+                      isUnderSizeLimit(10);
+
+      allow delete: if isBusinessStaff(businessId);
+    }
+
+    // ===============================================================
+    // QR Posters & Printable Queue Collateral
+    // Path: businesses/{businessId}/qr/{fileName}
+    // ===============================================================
+    match /businesses/{businessId}/qr/{fileName} {
+      // Public or staff read to allow downloading and printing
+      allow read: if true;
+
+      // Only business staff can generate/store posters (max 10MB, images or pdf)
+      allow write: if isBusinessStaff(businessId) &&
+                      (isImage() || isPdf()) &&
+                      isUnderSizeLimit(10);
+
+      allow delete: if isBusinessStaff(businessId);
+    }
+
+    // ===============================================================
+    // Business Verification Documents & Contracts (Private)
+    // Path: businesses/{businessId}/documents/{fileName}
+    // ===============================================================
+    match /businesses/{businessId}/documents/{fileName} {
+      // Private: Only business staff or administrator can view documents
+      allow read: if isBusinessStaff(businessId);
+
+      // Business staff can upload verification files (max 15MB, images or pdf)
+      allow write: if isBusinessStaff(businessId) &&
+                      (isImage() || isPdf()) &&
+                      isUnderSizeLimit(15);
+
+      allow delete: if isBusinessStaff(businessId);
+    }
+  }
+}
