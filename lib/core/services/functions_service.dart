@@ -727,7 +727,23 @@ class FunctionsService {
     final auth = FirebaseAuth.instance;
 
     String prefix = 'Q';
+    String bizName = 'EasyQueue Business';
+    String brName = 'Main Branch';
+    String srvName = 'General Service';
     try {
+      final bizDoc = await db.collection('businesses').doc(businessId).get();
+      if (bizDoc.exists) {
+        bizName = (bizDoc.data()?['name'] as String?)?.trim() ?? bizName;
+      }
+      final branchDoc = await db
+          .collection('businesses')
+          .doc(businessId)
+          .collection('branches')
+          .doc(branchId)
+          .get();
+      if (branchDoc.exists) {
+        brName = (branchDoc.data()?['name'] as String?)?.trim() ?? brName;
+      }
       final serviceDoc = await db
           .collection('businesses')
           .doc(businessId)
@@ -738,6 +754,7 @@ class FunctionsService {
           .get();
       if (serviceDoc.exists) {
         prefix = (serviceDoc.data()?['code'] as String? ?? 'Q').toUpperCase();
+        srvName = (serviceDoc.data()?['name'] as String?)?.trim() ?? srvName;
       }
     } catch (_) {}
 
@@ -756,8 +773,13 @@ class FunctionsService {
     await entryRef.set({
       'id': entryId,
       'businessId': businessId,
+      'businessName': bizName,
+      'establishment': bizName,
+      'establishmentName': bizName,
       'branchId': branchId,
+      'branchName': brName,
       'serviceId': serviceId,
+      'serviceName': srvName,
       'tokenNumber': tokenNumber,
       'status': 'WAITING',
       'customer': {

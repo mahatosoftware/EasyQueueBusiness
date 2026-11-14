@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../constants/app_constants.dart';
 
 enum CounterStatus { closed, available, busy, paused, onBreak, offline, maintenance }
 
@@ -95,6 +96,7 @@ class BusinessModel {
   final String ownerId;
   final String name;
   final String category;
+  final String? subCategory;
   final String? description;
   final String? logoUrl;
   final String? email;
@@ -105,11 +107,22 @@ class BusinessModel {
   final bool isPublic;
   final String status;
 
+  OrganizationCategory get orgCategory => OrganizationCategoryManager.findCategory(category);
+  OrganizationSubCategory? get orgSubCategory => OrganizationCategoryManager.findSubCategory(category, subCategory);
+
+  BusinessCategoryInfo get categoryInfo => BusinessCategories.find(category);
+  String get categoryDisplayName => orgCategory.name;
+  String get subCategoryDisplayName => subCategory ?? (orgCategory.subCategories.isNotEmpty ? orgCategory.subCategories.first.name : '');
+  String get fullCategoryDisplayName => (subCategory != null && subCategory!.trim().isNotEmpty)
+      ? '${orgCategory.name} • ${subCategory!.trim()}'
+      : orgCategory.name;
+
   BusinessModel({
     required this.id,
     required this.ownerId,
     required this.name,
     required this.category,
+    this.subCategory,
     this.description,
     this.logoUrl,
     this.email,
@@ -128,6 +141,7 @@ class BusinessModel {
       ownerId: data['ownerId'] ?? '',
       name: data['name'] ?? '',
       category: data['category'] ?? 'GENERAL',
+      subCategory: data['subCategory'] ?? data['subcategory'],
       description: data['description'],
       logoUrl: data['logoUrl'],
       email: data['email'],

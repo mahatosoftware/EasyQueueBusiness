@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+export 'business_categories.dart';
+export 'organization_categories.dart';
 
 class AppConstants {
   static const String appName = 'EasyQueue Business';

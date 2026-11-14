@@ -116,12 +116,18 @@ class _QueueEntryTile extends ConsumerWidget {
                   CircleAvatar(
                     radius: 24,
                     backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                    child: Text(
-                      entry.tokenNumber,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Theme.of(context).colorScheme.primary,
+                    child: Padding(
+                      padding: const EdgeInsets.all(4.0),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          entry.tokenNumber,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -132,15 +138,20 @@ class _QueueEntryTile extends ConsumerWidget {
                       children: [
                         Text(
                           entry.customerName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                         ),
                         Text(
                           '${entry.numberOfPeople} person • Status: ${entry.status.toApiString()}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontSize: 12, color: Colors.grey),
                         ),
                       ],
                     ),
                   ),
+                  const SizedBox(width: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
@@ -165,7 +176,14 @@ class _QueueEntryTile extends ConsumerWidget {
                     children: [
                       const Icon(Icons.phone, size: 16, color: Colors.grey),
                       const SizedBox(width: 8),
-                      Text(entry.phoneNumber!, style: const TextStyle(fontSize: 13)),
+                      Expanded(
+                        child: Text(
+                          entry.phoneNumber!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -344,18 +362,31 @@ class _QueueEntryTile extends ConsumerWidget {
         onTap: () => _showTokenActionsBottomSheet(context, ref),
         leading: CircleAvatar(
           backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-          child: Text(
-            entry.tokenNumber,
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 13,
-              color: Theme.of(context).colorScheme.primary,
+          child: Padding(
+            padding: const EdgeInsets.all(4.0),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                entry.tokenNumber,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
             ),
           ),
         ),
         title: Row(
           children: [
-            Text(entry.customerName, style: const TextStyle(fontWeight: FontWeight.bold)),
+            Expanded(
+              child: Text(
+                entry.customerName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
             if (entry.priorityCategory != 'NORMAL') ...[
               const SizedBox(width: 8),
               Container(
@@ -374,6 +405,8 @@ class _QueueEntryTile extends ConsumerWidget {
         ),
         subtitle: Text(
           'Joined at $timeStr • ${entry.numberOfPeople} person • Est. ${entry.estimatedWaitMinutes}m wait',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
         ),
         trailing: entry.assignedCounterId != null
@@ -381,6 +414,8 @@ class _QueueEntryTile extends ConsumerWidget {
                 backgroundColor: Colors.blue.shade50,
                 label: Text(
                   entry.counterName ?? 'Counter',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blue),
                 ),
               )

@@ -48,9 +48,13 @@ class HomeScreen extends ConsumerWidget {
               children: [
                 Icon(Icons.location_on, size: 14, color: Theme.of(context).colorScheme.primary),
                 const SizedBox(width: 4),
-                Text(
-                  currentBranch?.name ?? 'Main Branch',
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                Expanded(
+                  child: Text(
+                    currentBranch?.name ?? 'Main Branch',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
                 ),
               ],
             ),
@@ -262,8 +266,14 @@ class HomeScreen extends ConsumerWidget {
                   );
                 }
 
+                final completedEntries = completedEntriesAsync.valueOrNull ?? [];
                 return Column(
-                  children: counterList.map((c) => _CounterTile(counter: c)).toList(),
+                  children: counterList.map((c) {
+                    final servedCount = completedEntries
+                        .where((e) => e.assignedCounterId == c.id && e.status == EntryStatus.completed)
+                        .length;
+                    return _CounterTile(counter: c, servedCount: servedCount);
+                  }).toList(),
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
@@ -327,8 +337,9 @@ class _MetricCard extends StatelessWidget {
 
 class _CounterTile extends StatelessWidget {
   final CounterModel counter;
+  final int servedCount;
 
-  const _CounterTile({required this.counter});
+  const _CounterTile({required this.counter, required this.servedCount});
 
   Color _getStatusColor() {
     switch (counter.status) {
@@ -362,12 +373,16 @@ class _CounterTile extends StatelessWidget {
         ),
         title: Text(
           counter.name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: const TextStyle(fontWeight: FontWeight.w600),
         ),
         subtitle: Text(
           counter.currentTokenNumber != null
-              ? 'Serving: ${counter.currentTokenNumber}'
-              : 'Status: ${counter.status.toApiString()}',
+              ? 'Serving: ${counter.currentTokenNumber} • $servedCount served today'
+              : '${counter.status.toApiString()} • $servedCount served today',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(
             color: counter.currentTokenNumber != null ? Colors.blue.shade700 : Colors.grey.shade600,
             fontWeight: counter.currentTokenNumber != null ? FontWeight.bold : FontWeight.normal,

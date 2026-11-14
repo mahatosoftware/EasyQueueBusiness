@@ -474,6 +474,7 @@ class _OperatorWorkspaceScreenState extends ConsumerState<OperatorWorkspaceScree
   Widget build(BuildContext context) {
     final countersAsync = ref.watch(countersStreamProvider);
     final activeEntriesAsync = ref.watch(activeQueueEntriesProvider);
+    final completedEntriesAsync = ref.watch(completedQueueEntriesProvider);
 
     final counter = countersAsync.valueOrNull?.where((c) => c.id == widget.counterId).firstOrNull;
 
@@ -484,6 +485,11 @@ class _OperatorWorkspaceScreenState extends ConsumerState<OperatorWorkspaceScree
       );
     }
 
+    final servedTodayCount = completedEntriesAsync.valueOrNull
+            ?.where((e) => e.assignedCounterId == widget.counterId && e.status == EntryStatus.completed)
+            .length ??
+        0;
+
     // Current entry if active
     final currentEntry = activeEntriesAsync.valueOrNull?.where((e) => e.id == counter.currentEntryId).firstOrNull;
 
@@ -492,9 +498,16 @@ class _OperatorWorkspaceScreenState extends ConsumerState<OperatorWorkspaceScree
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(counter.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             Text(
-              'Status: ${counter.status.toApiString()}',
+              counter.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            Text(
+              '${counter.status.toApiString()} • $servedTodayCount served today',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(fontSize: 12, color: _getStatusColor(counter.status)),
             ),
           ],
@@ -677,13 +690,19 @@ class _OperatorWorkspaceScreenState extends ConsumerState<OperatorWorkspaceScree
               ),
             ),
             const SizedBox(height: 16),
-            Text(
-              entry.tokenNumber,
-              style: const TextStyle(fontSize: 54, fontWeight: FontWeight.w900, letterSpacing: 2),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                entry.tokenNumber,
+                style: const TextStyle(fontSize: 54, fontWeight: FontWeight.w900, letterSpacing: 2),
+              ),
             ),
             const SizedBox(height: 8),
             Text(
               entry.customerName,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
             if (entry.phoneNumber != null) ...[

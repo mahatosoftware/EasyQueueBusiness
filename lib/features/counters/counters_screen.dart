@@ -149,6 +149,10 @@ class _CounterCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final statusColor = _getStatusColor();
+    final completedEntries = ref.watch(completedQueueEntriesProvider).valueOrNull ?? [];
+    final servedCount = completedEntries
+        .where((e) => e.assignedCounterId == counter.id && e.status == EntryStatus.completed)
+        .length;
 
     return InkWell(
       onTap: () {
@@ -215,7 +219,24 @@ class _CounterCard extends ConsumerWidget {
                 counter.supportedServiceIds.isEmpty
                     ? 'All Services'
                     : '${counter.supportedServiceIds.length} Services Supported',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+              ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Icon(Icons.check_circle_outline, size: 12, color: Colors.green.shade700),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      '$servedCount served today',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.blueGrey.shade700),
+                    ),
+                  ),
+                ],
               ),
               const Spacer(),
               if (counter.currentTokenNumber != null) ...[
@@ -232,9 +253,12 @@ class _CounterCard extends ConsumerWidget {
                         'CURRENT TOKEN',
                         style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.blue),
                       ),
-                      Text(
-                        counter.currentTokenNumber!,
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blue),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          counter.currentTokenNumber!,
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blue),
+                        ),
                       ),
                     ],
                   ),

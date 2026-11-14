@@ -156,6 +156,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                           final c = counters[idx];
                           final isBusy = c.status == CounterStatus.busy;
                           final isAvailable = c.status == CounterStatus.available;
+                          final counterServed = completedEntries
+                              .where((e) => e.assignedCounterId == c.id && e.status == EntryStatus.completed)
+                              .length;
 
                           return Row(
                             children: [
@@ -184,20 +187,47 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(c.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                                     Text(
-                                      'Status: ${c.status.toApiString()}',
-                                      style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                                      c.name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                    ),
+                                    Text(
+                                      '$counterServed tokens served today',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.blue.shade700,
+                                        fontWeight: FontWeight.w600,
+                                      ),
                                     ),
                                   ],
                                 ),
                               ),
-                              Text(
-                                isBusy ? 'Serving' : (isAvailable ? 'Idle / Ready' : 'Paused'),
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 12,
-                                  color: isBusy ? Colors.blue : (isAvailable ? Colors.green : Colors.grey),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: isBusy
+                                      ? Colors.blue.shade50
+                                      : isAvailable
+                                          ? Colors.green.shade50
+                                          : Colors.grey.shade100,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  isBusy && c.currentTokenNumber != null
+                                      ? 'Serving ${c.currentTokenNumber}'
+                                      : (isBusy ? 'Serving' : (isAvailable ? 'Idle / Ready' : 'Paused')),
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 11,
+                                    color: isBusy
+                                        ? Colors.blue.shade800
+                                        : (isAvailable ? Colors.green.shade800 : Colors.grey.shade700),
+                                  ),
                                 ),
                               ),
                             ],

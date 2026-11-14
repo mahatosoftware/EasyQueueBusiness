@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import '../../core/constants/app_constants.dart';
 
 final authServiceProvider = Provider<AuthService>((ref) {
   return AuthService(FirebaseAuth.instance, FirebaseFirestore.instance);
@@ -36,6 +37,8 @@ class AuthService {
     String password,
     String name, {
     String? businessName,
+    String? category,
+    String? subCategory,
   }) async {
     final cred = await _auth.createUserWithEmailAndPassword(email: email, password: password);
     if (cred.user != null) {
@@ -53,6 +56,8 @@ class AuthService {
         businessName: businessName != null && businessName.trim().isNotEmpty
             ? businessName.trim()
             : "$name's Organization",
+        category: category,
+        subCategory: subCategory,
       );
     }
     return cred;
@@ -151,6 +156,7 @@ class AuthService {
   Future<String> createProductionBusiness({
     required String businessName,
     String? category,
+    String? subCategory,
     String? branchName,
     String? branchAddress,
   }) async {
@@ -162,8 +168,12 @@ class AuthService {
     final cleanUid = uid.length > 8 ? uid.substring(0, 8) : uid;
     final businessId = 'biz_${cleanUid}_$timestamp';
     final branchId = 'branch_$timestamp';
-    const serviceId = 'service_1';
     const counterId = 'counter_1';
+
+    final orgCat = OrganizationCategoryManager.findCategory(category);
+    final orgSub = OrganizationCategoryManager.findSubCategory(category, subCategory);
+    final normalizedCategory = orgCat.id;
+    final resolvedSubCategoryName = orgSub?.name ?? (subCategory != null && subCategory.trim().isNotEmpty ? subCategory.trim() : null);
 
     final userEmail = (user.email != null && user.email!.trim().isNotEmpty)
         ? user.email!.trim()
@@ -176,7 +186,8 @@ class AuthService {
       'id': businessId,
       'name': businessName.trim(),
       'ownerId': uid,
-      'category': category != null && category.trim().isNotEmpty ? category.trim() : 'GENERAL',
+      'category': normalizedCategory,
+      'subCategory': ?resolvedSubCategoryName,
       if (user.email != null && user.email!.trim().isNotEmpty) 'email': user.email!.trim(),
       'isPublic': true,
       'status': 'ACTIVE',
@@ -201,7 +212,7 @@ class AuthService {
 
     await bizBatch.commit();
 
-    // 2. Now commit Branch, Service, Counter (Business document already committed & exists)
+    // 2. Now commit Branch, Industry Default Services, Queues, and Counter
     final branchBatch = _firestore.batch();
     final branchRef = bizRef.collection('branches').doc(branchId);
     branchBatch.set(branchRef, {
@@ -215,19 +226,52 @@ class AuthService {
       'updatedAt': FieldValue.serverTimestamp(),
     });
 
-    final serviceRef = branchRef.collection('services').doc(serviceId);
-    branchBatch.set(serviceRef, {
-      'id': serviceId,
-      'branchId': branchId,
-      'businessId': businessId,
-      'name': 'General Service',
-      'code': 'A',
-      'estimatedDurationMinutes': 15,
-      'status': 'ACTIVE',
-      'isActive': true,
-      'createdAt': FieldValue.serverTimestamp(),
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
+    final defaultServices = (orgSub != null && orgSub.defaultServices.isNotEmpty)
+        ? orgSub.defaultServices
+        : orgCat.defaultServices;
+    final createdServiceIds = <String>[];
+
+    for (int i = 0; i < defaultServices.length; i++) {
+      final tpl = defaultServices[i];
+      final serviceId = 'service_${i + 1}';
+      createdServiceIds.add(serviceId);
+
+      final serviceRef = branchRef.collection('services').doc(serviceId);
+      branchBatch.set(serviceRef, {
+        'id': serviceId,
+        'branchId': branchId,
+        'businessId': businessId,
+        'name': tpl.name,
+        'code': tpl.code,
+        'estimatedDurationMinutes': tpl.durationMinutes,
+        'description': tpl.description,
+        'maxQueueCapacity': tpl.maxCapacity,
+        'allowWalkIn': tpl.allowWalkIn,
+        'supportsPriority': tpl.supportsPriority,
+        'allocationPolicy': tpl.allocationPolicy,
+        'status': 'ACTIVE',
+        'isActive': true,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      final queueRef = branchRef.collection('queues').doc(serviceId);
+      branchBatch.set(queueRef, {
+        'id': serviceId,
+        'businessId': businessId,
+        'branchId': branchId,
+        'serviceId': serviceId,
+        'tokenPrefix': tpl.code,
+        'tokenSequenceDate': DateTime.now().toIso8601String().substring(0, 10),
+        'lastTokenNumber': 0,
+        'waitingCount': 0,
+        'calledCount': 0,
+        'servingCount': 0,
+        'completedCount': 0,
+        'status': 'OPEN',
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    }
 
     final counterRef = branchRef.collection('counters').doc(counterId);
     branchBatch.set(counterRef, {
@@ -237,7 +281,7 @@ class AuthService {
       'counterNumber': 1,
       'name': 'Counter 1',
       'displayLabel': 'Counter 1',
-      'supportedServiceIds': [serviceId],
+      'supportedServiceIds': createdServiceIds,
       'assignedOperatorIds': [uid],
       'status': 'AVAILABLE',
       'createdAt': FieldValue.serverTimestamp(),

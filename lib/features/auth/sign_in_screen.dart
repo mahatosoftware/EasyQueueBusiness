@@ -18,6 +18,8 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   final _nameController = TextEditingController();
   final _businessNameController = TextEditingController();
 
+  String _selectedCategory = OrganizationCategoryManager.healthcare.id;
+  String? _selectedSubCategory = OrganizationCategoryManager.healthcare.subCategories.first.name;
   bool _isSignUp = false;
   bool _obscurePassword = true;
   bool _isLoading = false;
@@ -51,6 +53,8 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
           password,
           _nameController.text.trim(),
           businessName: _businessNameController.text.trim(),
+          category: _selectedCategory,
+          subCategory: _selectedSubCategory,
         );
       } else {
         await auth.signInWithEmail(email, password);
@@ -356,6 +360,98 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                                     return 'Please enter your business name';
                                   }
                                   return null;
+                                },
+                              ),
+                              const SizedBox(height: 14),
+
+                              DropdownButtonFormField<String>(
+                                initialValue: _selectedCategory,
+                                decoration: const InputDecoration(
+                                  labelText: 'Industry / Business Category (A - O)',
+                                  prefixIcon: Icon(Icons.category_outlined),
+                                  helperText: 'Select industry group to customize starter queues',
+                                ),
+                                isExpanded: true,
+                                items: OrganizationCategoryManager.defaultCategories.map((cat) {
+                                  return DropdownMenuItem<String>(
+                                    value: cat.id,
+                                    child: Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                          decoration: BoxDecoration(
+                                            color: cat.brandColor.withValues(alpha: 0.12),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: Text(cat.code, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: cat.brandColor)),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Icon(cat.icon, size: 16, color: cat.brandColor),
+                                        const SizedBox(width: 6),
+                                        Expanded(
+                                          child: Text(
+                                            cat.name,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(fontSize: 13),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }).toList(),
+                                onChanged: (val) {
+                                  if (val != null) {
+                                    final cat = OrganizationCategoryManager.findCategory(val);
+                                    setState(() {
+                                      _selectedCategory = val;
+                                      _selectedSubCategory = cat.subCategories.isNotEmpty ? cat.subCategories.first.name : null;
+                                    });
+                                  }
+                                },
+                              ),
+                              const SizedBox(height: 14),
+
+                              Builder(
+                                builder: (context) {
+                                  final activeCat = OrganizationCategoryManager.findCategory(_selectedCategory);
+                                  final subCats = activeCat.subCategories;
+                                  final initialSub = subCats.any((s) => s.name == _selectedSubCategory)
+                                      ? _selectedSubCategory
+                                      : (subCats.isNotEmpty ? subCats.first.name : null);
+
+                                  return DropdownButtonFormField<String>(
+                                    key: ValueKey('signup_subcat_${activeCat.id}'),
+                                    initialValue: initialSub,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Organization Type',
+                                      prefixIcon: Icon(Icons.subdirectory_arrow_right),
+                                      helperText: 'Exact organization classification & queue template',
+                                    ),
+                                    isExpanded: true,
+                                    items: subCats.map((sub) {
+                                      return DropdownMenuItem<String>(
+                                        value: sub.name,
+                                        child: Row(
+                                          children: [
+                                            Icon(sub.icon, size: 16, color: Colors.grey.shade700),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: Text(
+                                                sub.name,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(fontSize: 13),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    }).toList(),
+                                    onChanged: (val) {
+                                      if (val != null) {
+                                        setState(() => _selectedSubCategory = val);
+                                      }
+                                    },
+                                  );
                                 },
                               ),
                               const SizedBox(height: 14),

@@ -6,6 +6,7 @@ import '../../features/appointments/appointments_screen.dart';
 import '../../features/audit/audit_logs_screen.dart';
 import '../../features/auth/sign_in_screen.dart';
 import '../../features/branches/branches_screen.dart';
+import '../../features/categories/organization_category_screen.dart';
 import '../../features/counters/counters_screen.dart';
 import '../../features/counters/operator_workspace_screen.dart';
 import '../../features/customers/walk_in_registration_screen.dart';
@@ -111,6 +112,11 @@ final appRouter = GoRouter(
         final counterId = state.pathParameters['counterId'] ?? 'c1';
         return OperatorWorkspaceScreen(counterId: counterId);
       },
+    ),
+    GoRoute(
+      parentNavigatorKey: _rootNavigatorKey,
+      path: '/categories',
+      builder: (context, state) => const OrganizationCategoryScreen(),
     ),
     GoRoute(
       parentNavigatorKey: _rootNavigatorKey,

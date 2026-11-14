@@ -44,6 +44,21 @@ class _WalkInRegistrationScreenState extends ConsumerState<WalkInRegistrationScr
     final fn = ref.read(functionsServiceProvider);
     final bizId = ref.read(selectedBusinessIdProvider);
     final branchId = ref.read(selectedBranchIdProvider);
+    final currentBiz = ref.read(currentBusinessProvider);
+    final branches = ref.read(branchesStreamProvider).valueOrNull ?? [];
+    final currentBranch = branches.where((b) => b.id == branchId).firstOrNull ?? branches.firstOrNull;
+    final services = ref.read(servicesStreamProvider).valueOrNull ?? [];
+    final currentService = services.where((s) => s.id == _selectedServiceId).firstOrNull;
+
+    final businessName = (currentBiz?.name != null && currentBiz!.name.trim().isNotEmpty)
+        ? currentBiz.name.trim()
+        : 'EasyQueue Business';
+    final branchName = (currentBranch?.name != null && currentBranch!.name.trim().isNotEmpty)
+        ? currentBranch.name.trim()
+        : 'Main Branch';
+    final serviceName = (currentService?.name != null && currentService!.name.trim().isNotEmpty)
+        ? currentService.name.trim()
+        : 'Queue Service';
 
     try {
       final res = await fn.joinQueue(
@@ -63,6 +78,9 @@ class _WalkInRegistrationScreenState extends ConsumerState<WalkInRegistrationScr
           tokenNumber: res['tokenNumber'] ?? 'Q001',
           position: res['positionInQueue'] ?? 1,
           estWait: res['estimatedWaitMinutes'] ?? 10,
+          businessName: businessName,
+          branchName: branchName,
+          serviceName: serviceName,
         );
       }
     } catch (e) {
@@ -80,6 +98,9 @@ class _WalkInRegistrationScreenState extends ConsumerState<WalkInRegistrationScr
     required String tokenNumber,
     required int position,
     required int estWait,
+    required String businessName,
+    required String branchName,
+    required String serviceName,
   }) {
     showDialog(
       context: context,
@@ -90,18 +111,55 @@ class _WalkInRegistrationScreenState extends ConsumerState<WalkInRegistrationScr
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // Business Badge & Name
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.45),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2)),
+              ),
+              child: Column(
+                children: [
+                  const Text(
+                    'BUSINESS TOKEN',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.6,
+                      color: Color(0xFF0F766E),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    businessName,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+                    textAlign: TextAlign.center,
+                  ),
+                  Text(
+                    '$branchName • $serviceName',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.primaryContainer,
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: Text(
-                tokenNumber,
-                style: TextStyle(
-                  fontSize: 36,
-                  fontWeight: FontWeight.w900,
-                  color: Theme.of(context).colorScheme.primary,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  tokenNumber,
+                  style: TextStyle(
+                    fontSize: 36,
+                    fontWeight: FontWeight.w900,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
                 ),
               ),
             ),
@@ -118,7 +176,11 @@ class _WalkInRegistrationScreenState extends ConsumerState<WalkInRegistrationScr
               ),
             ),
             const SizedBox(height: 8),
-            const Text('Scan to track live queue status on phone', style: TextStyle(fontSize: 11, color: Colors.grey)),
+            Text(
+              'Scan to track live status at $businessName',
+              style: const TextStyle(fontSize: 11, color: Colors.grey),
+              textAlign: TextAlign.center,
+            ),
           ],
         ),
         actions: [

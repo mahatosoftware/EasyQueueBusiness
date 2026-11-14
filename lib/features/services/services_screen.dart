@@ -22,6 +22,16 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
     bool supportsPriority = true;
     String allocationPolicy = 'FIFO';
 
+    final currentBiz = ref.read(currentBusinessProvider);
+    final orgCat = OrganizationCategoryManager.findCategory(currentBiz?.category);
+    final orgSub = OrganizationCategoryManager.findSubCategory(currentBiz?.category, currentBiz?.subCategory);
+    final templates = (orgSub != null && orgSub.defaultServices.isNotEmpty)
+        ? orgSub.defaultServices
+        : orgCat.defaultServices;
+    final displayLabel = orgSub != null
+        ? '${orgCat.name} • ${orgSub.name}'
+        : orgCat.name;
+
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -33,6 +43,61 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (existing == null && templates.isNotEmpty) ...[
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    margin: const EdgeInsets.only(bottom: 14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFBFDBFE)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(orgSub?.icon ?? orgCat.icon, size: 16, color: const Color(0xFF1D4ED8)),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                '$displayLabel Templates',
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A)),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: templates.map((tpl) {
+                            return ActionChip(
+                              avatar: CircleAvatar(
+                                backgroundColor: const Color(0xFF2563EB),
+                                radius: 9,
+                                child: Text(tpl.code, style: const TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.bold)),
+                              ),
+                              label: Text(tpl.name, style: const TextStyle(fontSize: 11)),
+                              visualDensity: VisualDensity.compact,
+                              onPressed: () {
+                                setDialogState(() {
+                                  nameCtrl.text = tpl.name;
+                                  codeCtrl.text = tpl.code;
+                                  durationCtrl.text = '${tpl.durationMinutes}';
+                                  capacityCtrl.text = '${tpl.maxCapacity}';
+                                  allowWalkIn = tpl.allowWalkIn;
+                                  supportsPriority = tpl.supportsPriority;
+                                  allocationPolicy = tpl.allocationPolicy;
+                                });
+                              },
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 TextField(
                   controller: nameCtrl,
                   decoration: const InputDecoration(labelText: 'Service Name (e.g. Cardiology, X-Ray)'),
@@ -194,19 +259,119 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
       body: servicesAsync.when(
         data: (services) {
           if (services.isEmpty) {
+            final currentBiz = ref.watch(currentBusinessProvider);
+            final orgCat = OrganizationCategoryManager.findCategory(currentBiz?.category);
+            final orgSub = OrganizationCategoryManager.findSubCategory(currentBiz?.category, currentBiz?.subCategory);
+            final templates = (orgSub != null && orgSub.defaultServices.isNotEmpty)
+                ? orgSub.defaultServices
+                : orgCat.defaultServices;
+            final displayLabel = orgSub != null
+                ? '${orgCat.name} • ${orgSub.name}'
+                : orgCat.name;
+
             return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.room_service_outlined, size: 64, color: Colors.grey.shade400),
-                  const SizedBox(height: 16),
-                  const Text('No services configured for this branch.'),
-                  const SizedBox(height: 12),
-                  ElevatedButton(
-                    onPressed: () => _showAddServiceDialog(context),
-                    child: const Text('Create First Service'),
-                  ),
-                ],
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(orgSub?.icon ?? orgCat.icon, size: 64, color: Colors.blue.shade300),
+                    const SizedBox(height: 16),
+                    Text(
+                      'No services configured for $displayLabel.',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Start with recommended queues tailored for $displayLabel or create a custom service.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                    ),
+                    const SizedBox(height: 20),
+                    if (templates.isNotEmpty) ...[
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.auto_awesome),
+                        label: Text('Load $displayLabel Services (${templates.length})'),
+                        onPressed: () async {
+                          final bizId = ref.read(selectedBusinessIdProvider);
+                          final branchId = ref.read(selectedBranchIdProvider);
+                          if (bizId.isEmpty || branchId.isEmpty) return;
+
+                          final batch = FirebaseFirestore.instance.batch();
+
+                          for (int i = 0; i < templates.length; i++) {
+                            final tpl = templates[i];
+                            final sId = 'service_${DateTime.now().millisecondsSinceEpoch}_$i';
+
+                            final sRef = FirebaseFirestore.instance
+                                .collection('businesses')
+                                .doc(bizId)
+                                .collection('branches')
+                                .doc(branchId)
+                                .collection('services')
+                                .doc(sId);
+                            batch.set(sRef, {
+                              'id': sId,
+                              'businessId': bizId,
+                              'branchId': branchId,
+                              'name': tpl.name,
+                              'code': tpl.code,
+                              'estimatedDurationMinutes': tpl.durationMinutes,
+                              'description': tpl.description,
+                              'maxQueueCapacity': tpl.maxCapacity,
+                              'allowWalkIn': tpl.allowWalkIn,
+                              'supportsPriority': tpl.supportsPriority,
+                              'allocationPolicy': tpl.allocationPolicy,
+                              'status': 'ACTIVE',
+                              'isActive': true,
+                              'createdAt': FieldValue.serverTimestamp(),
+                              'updatedAt': FieldValue.serverTimestamp(),
+                            });
+
+                            final qRef = FirebaseFirestore.instance
+                                .collection('businesses')
+                                .doc(bizId)
+                                .collection('branches')
+                                .doc(branchId)
+                                .collection('queues')
+                                .doc(sId);
+                            batch.set(qRef, {
+                              'id': sId,
+                              'businessId': bizId,
+                              'branchId': branchId,
+                              'serviceId': sId,
+                              'tokenPrefix': tpl.code,
+                              'tokenSequenceDate': DateTime.now().toIso8601String().substring(0, 10),
+                              'lastTokenNumber': 0,
+                              'waitingCount': 0,
+                              'calledCount': 0,
+                              'servingCount': 0,
+                              'completedCount': 0,
+                              'status': 'OPEN',
+                              'updatedAt': FieldValue.serverTimestamp(),
+                            });
+                          }
+
+                          await batch.commit();
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Configured ${templates.length} starter services for $displayLabel!'),
+                                backgroundColor: Colors.green.shade700,
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                    OutlinedButton(
+                      onPressed: () => _showAddServiceDialog(context),
+                      child: const Text('Create Custom Service'),
+                    ),
+                  ],
+                ),
               ),
             );
           }
